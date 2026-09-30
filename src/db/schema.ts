@@ -19,6 +19,9 @@ export const opportunities = pgTable("opportunities", {
   outreachMessage: text("outreach_message"),
   auditData: text("audit_data"), // JSON formatted string
   contractTerms: text("contract_terms"),
+  offerTier: text("offer_tier").default("remediation"), // remediation ($350) | implementation ($1.5K-$3K) | monitoring ($199-$299/mo)
+  monthlyPrice: numeric("monthly_price", { precision: 10, scale: 2 }),
+  acquisitionSource: text("acquisition_source").default("manual"), // manual | ct_log | portfolio | advisor
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -81,5 +84,76 @@ export const playbooks = pgTable("playbooks", {
   freeToolsUsed: text("free_tools_used").notNull(),
   scriptsAndTemplates: text("scripts_and_templates").notNull(), // JSON
   riskMitigation: text("risk_mitigation").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// ── Autonomous engine: persistent scan targets ──────────────────────────
+
+export const scanTargets = pgTable("scan_targets", {
+  id: serial("id").primaryKey(),
+  domain: text("domain").notNull().unique(),
+  niche: text("niche").notNull().default("B2B Services"),
+  industry: text("industry"),               // feedback-loop dimension
+  source: text("source").notNull().default("manual"), // manual | ct_log | portfolio | csv_import
+  isActive: boolean("is_active").notNull().default(true),
+  priority: integer("priority").notNull().default(1),
+  lastAuditedAt: timestamp("last_audited_at"),
+  lastScore: integer("last_score"),
+  lastDealId: integer("last_deal_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// ── Autonomous engine: run history ──────────────────────────────────────
+
+export const autonomousRuns = pgTable("autonomous_runs", {
+  id: text("id").primaryKey(),
+  status: text("status").notNull().default("running"),
+  scoreThreshold: integer("score_threshold").notNull().default(65),
+  autoCreateDeals: boolean("auto_create_deals").notNull().default(true),
+  autoGenerateOutreach: boolean("auto_generate_outreach").notNull().default(true),
+  autoCreateCheckout: boolean("auto_create_checkout").notNull().default(false),
+  domainsScanned: integer("domains_scanned").notNull().default(0),
+  opportunitiesFound: integer("opportunities_found").notNull().default(0),
+  dealsCreated: integer("deals_created").notNull().default(0),
+  outreachGenerated: integer("outreach_generated").notNull().default(0),
+  checkoutsCreated: integer("checkouts_created").notNull().default(0),
+  totalEstimatedValue: numeric("total_estimated_value", { precision: 12, scale: 2 }).notNull().default("0"),
+  details: text("details"),
+  error: text("error"),
+  startedAt: timestamp("started_at").defaultNow().notNull(),
+  completedAt: timestamp("completed_at"),
+});
+
+// ── Productized offers: recurring monitoring subscriptions ───────────────
+
+export const monitoringSubscriptions = pgTable("monitoring_subscriptions", {
+  id: serial("id").primaryKey(),
+  opportunityId: integer("opportunity_id"),
+  domain: text("domain").notNull(),
+  clientName: text("client_name").notNull(),
+  tier: text("tier").notNull().default("standard"), // standard ($199/mo) | premium ($299/mo)
+  monthlyPrice: numeric("monthly_price", { precision: 10, scale: 2 }).notNull().default("199.00"),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  stripePriceId: text("stripe_price_id"),
+  status: text("status").notNull().default("active"), // active | paused | cancelled | past_due
+  currentPeriodStart: timestamp("current_period_start"),
+  currentPeriodEnd: timestamp("current_period_end"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// ── Revenue feedback loop: event-level attribution ──────────────────────
+
+export const revenueEvents = pgTable("revenue_events", {
+  id: serial("id").primaryKey(),
+  opportunityId: integer("opportunity_id"),
+  transactionId: integer("transaction_id"),
+  industry: text("industry"),
+  offerTier: text("offer_tier"), // remediation | implementation | monitoring
+  acquisitionSource: text("acquisition_source"), // ct_log | manual | portfolio | advisor
+  contactType: text("contact_type"), // owner | cto | marketing_vp | procurement
+  channel: text("channel"), // email | sms | linkedin | form
+  amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+  eventType: text("event_type").notNull(), // checkout_created | payment_verified | subscription_started | subscription_renewed
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

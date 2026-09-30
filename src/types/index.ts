@@ -32,6 +32,9 @@ export interface Opportunity {
   outreachMessage: string | null;
   auditData: string | null;
   contractTerms: string | null;
+  offerTier: string | null;
+  monthlyPrice: string | null;
+  acquisitionSource: string | null;
   createdAt: string;
   updatedAt: string;
 }

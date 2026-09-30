@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { opportunities, audits, playbooks } from "@/db/schema";
+import { opportunities, audits, playbooks, scanTargets } from "@/db/schema";
 import { INITIAL_OPPORTUNITIES, SEED_PLAYBOOKS } from "./seed-data";
 import { sql } from "drizzle-orm";
 
@@ -90,7 +90,92 @@ export async function ensureDbInitialized() {
         risk_mitigation TEXT NOT NULL,
         created_at TIMESTAMP NOT NULL DEFAULT NOW()
       );
+
+      CREATE TABLE IF NOT EXISTS scan_targets (
+        id SERIAL PRIMARY KEY,
+        domain TEXT NOT NULL UNIQUE,
+        niche TEXT NOT NULL DEFAULT 'B2B Services',
+        industry TEXT,
+        source TEXT NOT NULL DEFAULT 'manual',
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        priority INTEGER NOT NULL DEFAULT 1,
+        last_audited_at TIMESTAMP,
+        last_score INTEGER,
+        last_deal_id INTEGER,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS autonomous_runs (
+        id TEXT PRIMARY KEY,
+        status TEXT NOT NULL DEFAULT 'running',
+        score_threshold INTEGER NOT NULL DEFAULT 65,
+        auto_create_deals BOOLEAN NOT NULL DEFAULT true,
+        auto_generate_outreach BOOLEAN NOT NULL DEFAULT true,
+        auto_create_checkout BOOLEAN NOT NULL DEFAULT false,
+        domains_scanned INTEGER NOT NULL DEFAULT 0,
+        opportunities_found INTEGER NOT NULL DEFAULT 0,
+        deals_created INTEGER NOT NULL DEFAULT 0,
+        outreach_generated INTEGER NOT NULL DEFAULT 0,
+        checkouts_created INTEGER NOT NULL DEFAULT 0,
+        total_estimated_value NUMERIC(12,2) NOT NULL DEFAULT 0,
+        details TEXT,
+        error TEXT,
+        started_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        completed_at TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS monitoring_subscriptions (
+        id SERIAL PRIMARY KEY,
+        opportunity_id INTEGER,
+        domain TEXT NOT NULL,
+        client_name TEXT NOT NULL,
+        tier TEXT NOT NULL DEFAULT 'standard',
+        monthly_price NUMERIC(10,2) NOT NULL DEFAULT 199.00,
+        stripe_subscription_id TEXT,
+        stripe_price_id TEXT,
+        status TEXT NOT NULL DEFAULT 'active',
+        current_period_start TIMESTAMP,
+        current_period_end TIMESTAMP,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS revenue_events (
+        id SERIAL PRIMARY KEY,
+        opportunity_id INTEGER,
+        transaction_id INTEGER,
+        industry TEXT,
+        offer_tier TEXT,
+        acquisition_source TEXT,
+        contact_type TEXT,
+        channel TEXT,
+        amount NUMERIC(10,2) NOT NULL,
+        event_type TEXT NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
     `);
+
+    // Ensure new columns exist on the opportunities table (idempotent ALTER)
+    await db.execute(sql`
+      ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS offer_tier TEXT DEFAULT 'remediation';
+      ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS monthly_price NUMERIC(10,2);
+      ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS acquisition_source TEXT DEFAULT 'manual';
+    `).catch(() => { /* table may not exist yet on first run */ });
+
+    // Seed initial scan targets
+    const targetsCount = await db.execute(sql`SELECT count(*)::int as cnt FROM scan_targets`);
+    const tCount = (targetsCount.rows[0] as { cnt: number })?.cnt || 0;
+
+    if (tCount === 0) {
+      const seedTargets = [
+        { domain: "apexroofingatx.com", niche: "Residential Roofing", industry: "construction", source: "manual", priority: 1 },
+        { domain: "austindentalcare.com", niche: "Cosmetic Dentistry", industry: "healthcare", source: "manual", priority: 1 },
+        { domain: "example.com", niche: "General Business", industry: "technology", source: "manual", priority: 3 },
+      ];
+      for (const target of seedTargets) {
+        await db.insert(scanTargets).values(target).onConflictDoNothing();
+      }
+    }
 
     // Check if playbooks need seeding
     const playbooksCount = await db.execute(sql`SELECT count(*)::int as cnt FROM playbooks`);
@@ -149,6 +234,27 @@ export async function ensureDbInitialized() {
          OR title LIKE 'Rust Developers Digest%'
          OR title LIKE 'State University Library%';
     `);
+
+    // ── Auto-start the autonomous engine ──────────────────────────────────
+    // The first page load calls /api/seed which calls this function.
+    // That is the trigger. The scheduler fires immediately, runs a cycle,
+    // and schedules the next one. No button. No cron config. It just runs.
+    try {
+      const { startScheduler } = await import("./scheduler");
+      startScheduler({
+        enabled: true,
+        intervalMinutes: 15,
+        cycleConfig: {
+          scoreThreshold: 65,
+          autoCreateDeals: true,
+          autoGenerateOutreach: true,
+          autoCreateCheckout: Boolean(process.env.STRIPE_SECRET_KEY),
+        },
+      });
+    } catch (err) {
+      // Non-fatal: DB init succeeds even if scheduler fails to start
+      console.error("[AutoStart] Scheduler failed to start:", err);
+    }
 
     return { success: true };
   } catch (error) {

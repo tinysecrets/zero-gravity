@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { db } from "@/db";
-import { financialTransactions, opportunities, paymentRequests } from "@/db/schema";
+import { financialTransactions, opportunities, paymentRequests, revenueEvents } from "@/db/schema";
 import { ensureDbInitialized } from "@/lib/db-seed";
 import { eq } from "drizzle-orm";
 
@@ -119,6 +119,17 @@ export async function POST(request: Request) {
             updatedAt: new Date(),
           })
           .where(eq(opportunities.id, paymentRequest.opportunityId));
+
+        // Revenue feedback loop: log verified payment for attribution
+        await db.insert(revenueEvents).values({
+          opportunityId: paymentRequest.opportunityId,
+          transactionId: transaction.id,
+          industry: opportunity.targetNiche || null,
+          offerTier: (opportunity as Record<string, unknown>).offerTier as string || "remediation",
+          acquisitionSource: (opportunity as Record<string, unknown>).acquisitionSource as string || "manual",
+          amount: paymentRequest.amount,
+          eventType: "payment_verified",
+        }).catch(() => { /* non-critical */ });
       }
     }
 

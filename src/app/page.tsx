@@ -8,6 +8,7 @@ import { LiveScanner } from "@/components/LiveScanner";
 import { ExecutionPlaybooks } from "@/components/ExecutionPlaybooks";
 import { FinancialLedger } from "@/components/FinancialLedger";
 import { AiStrategyAdvisor } from "@/components/AiStrategyAdvisor";
+import { AutonomousEngine } from "@/components/AutonomousEngine";
 import { DealModal } from "@/components/DealModal";
 import { NewDealModal } from "@/components/NewDealModal";
 import { InstantPaymentModal } from "@/components/InstantPaymentModal";
@@ -162,6 +163,8 @@ export default function HomePage() {
             isLoading={isLoading}
           />
         )}
+
+        {activeTab === "autonomous" && <AutonomousEngine />}
 
         {activeTab === "scanner" && (
           <LiveScanner
