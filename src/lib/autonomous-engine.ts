@@ -1,5 +1,6 @@
 import { runDomainAudit, type AuditResult } from "./audit-engine";
 import { sendOutreach } from "./email-outreach";
+import { findContact } from "./contact-finder";
 import { db } from "@/db";
 import { opportunities, scanTargets, autonomousRuns, paymentRequests, revenueEvents } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
@@ -285,14 +286,31 @@ async function processDomain(
     ? `Revenue & Deliverability Recovery Implementation — $${bounty.toLocaleString()}`
     : `Deliverability Remediation — $${bounty}`;
 
+  // ── Find the real decision-maker ─────────────────────────────────────────
+  const contact = await findContact(domain);
+
+  addStep(state, {
+    type: "decide",
+    domain,
+    score: audit.score,
+    message: contact.email
+      ? `Contact found: ${contact.email} (${contact.contactName || "unknown"}, ${contact.contactRole || "unknown"}, ${contact.confidence} confidence, source: ${contact.source})`
+      : `No verifiable email found for ${domain}. Skipping outreach.`,
+  });
+
+  // Don't create a deal if we can't reach anyone
+  if (!contact.email) return;
+
   const [newDeal] = await db
     .insert(opportunities)
     .values({
       title: `${domain} — ${offerLabel}`,
       vector: "technical_leak_audit",
       targetCompany: domain,
-      targetContact: "Owner / Head of Growth",
-      targetEmail: `contact@${domain}`,
+      targetContact: contact.contactName && contact.contactRole
+        ? `${contact.contactName} (${contact.contactRole})`
+        : contact.contactName || contact.contactRole || "Decision Maker",
+      targetEmail: contact.email,
       targetNiche: niche,
       status: "audited",
       potentialValue: String(bounty),
@@ -301,12 +319,12 @@ async function processDomain(
       realizedRevenue: "0.00",
       capitalSpent: "0.00",
       outreachMessage: tier === "implementation"
-        ? buildImplementationOutreach(domain, audit, bounty)
-        : audit.readyOutreachCopy,
+        ? buildImplementationOutreach(domain, audit, bounty, contact.contactName)
+        : personalizeOutreach(audit.readyOutreachCopy, contact.contactName, domain),
       contractTerms: tier === "implementation"
         ? `Revenue & Deliverability Recovery Package: $${bounty}. Includes full DMARC/SPF/DKIM configuration, deliverability monitoring setup, and 30-day verification.`
         : `Fixed one-time remediation fee: $${bounty}. 100% satisfaction guarantee.`,
-      notes: `Autonomous cycle ${state.id.slice(0, 8)}. Score: ${audit.score}/100. Grade: ${audit.grade}. Tier: ${tier}. Monthly leakage: $${audit.estimatedMonthlyLeakage}. Source: ${source}.`,
+      notes: `Autonomous cycle ${state.id.slice(0, 8)}. Score: ${audit.score}/100. Grade: ${audit.grade}. Tier: ${tier}. Monthly leakage: $${audit.estimatedMonthlyLeakage}. Contact: ${contact.email} (${contact.source}, ${contact.confidence}). Source: ${source}.`,
       auditData: JSON.stringify({
         score: audit.score,
         grade: audit.grade,
@@ -316,6 +334,10 @@ async function processDomain(
         estimatedMonthlyLeakage: audit.estimatedMonthlyLeakage,
         findings: audit.findings.map((f) => ({ title: f.title, severity: f.severity })),
         offerTier: tier,
+        contactEmail: contact.email,
+        contactName: contact.contactName,
+        contactSource: contact.source,
+        contactConfidence: contact.confidence,
         automatedCycleId: state.id,
       }),
       offerTier: tier,
@@ -482,8 +504,10 @@ async function createCheckout(
 function buildImplementationOutreach(
   domain: string,
   audit: AuditResult,
-  price: number
+  price: number,
+  contactName?: string | null
 ): string {
+  const greeting = contactName ? `Hi ${contactName.split(" ")[0]},` : "Hi,";
   const criticalFindings = audit.findings
     .filter((f) => f.severity === "Critical")
     .map((f) => `- ${f.title}: ${f.description}`)
@@ -491,7 +515,7 @@ function buildImplementationOutreach(
 
   return `Subject: Revenue leakage report for ${domain} — $${audit.estimatedMonthlyLeakage.toLocaleString()}/mo at risk
 
-Hi,
+${greeting}
 
 I ran a comprehensive deliverability and revenue-leakage diagnostic on ${domain} and found multiple critical issues that are actively costing your business revenue each month:
 
@@ -512,6 +536,41 @@ Total investment: $${price.toLocaleString()} (one-time).
 If the issues I've documented aren't fully resolved, you pay nothing.
 
 Would you like me to send over the full diagnostic report and implementation scope?`;
+}
+
+// ---------------------------------------------------------------------------
+// Outreach personalization
+// ---------------------------------------------------------------------------
+
+function personalizeOutreach(
+  rawCopy: string,
+  contactName: string | null,
+  domain: string
+): string {
+  if (!rawCopy) return rawCopy;
+
+  let personalized = rawCopy;
+
+  // Replace common placeholder patterns with the real name
+  if (contactName) {
+    const firstName = contactName.split(" ")[0];
+    personalized = personalized
+      .replace(/\{\{OwnerName\}\}/gi, firstName)
+      .replace(/\{\{Name\}\}/gi, firstName)
+      .replace(/\{\{FounderName\}\}/gi, firstName)
+      .replace(/\{\{FirstName\}\}/gi, firstName)
+      .replace(/\[Founder\s*\/\s*VP Operations\]/gi, firstName)
+      .replace(/\[Name\]/gi, firstName)
+      .replace(/Hi \[Founder/gi, `Hi ${firstName}`)
+      .replace(/Hi \[Name\]/gi, `Hi ${firstName}`);
+  }
+
+  // Replace domain placeholders
+  personalized = personalized
+    .replace(/\{\{domain\}\}/gi, domain)
+    .replace(/\{\{Domain\}\}/gi, domain);
+
+  return personalized;
 }
 
 // ---------------------------------------------------------------------------
