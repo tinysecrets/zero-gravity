@@ -76,7 +76,8 @@ const DEFAULT_CONFIG: CycleConfig = {
   scoreThreshold: 65,
   autoCreateDeals: true,
   autoGenerateOutreach: true,
-  autoCreateCheckout: false,
+  // Stripe is already provisioned in production; when present, every qualified deal gets a live checkout.
+  autoCreateCheckout: Boolean(process.env.STRIPE_SECRET_KEY),
 };
 
 /**
@@ -261,7 +262,14 @@ async function processDomain(
     .where(eq(scanTargets.id, targetId));
 
   // ── Step 2: Decide ────────────────────────────────────────────────────────
-  const isActionable = audit.score < config.scoreThreshold;
+  // Reality gate: never create a second deal for the same domain while an open/recent deal exists.
+  const existingDeal = await db
+    .select({ id: opportunities.id, status: opportunities.status })
+    .from(opportunities)
+    .where(eq(opportunities.targetCompany, domain))
+    .limit(1);
+
+  const isActionable = audit.score < config.scoreThreshold && existingDeal.length === 0;
   state.summary.opportunitiesFound += isActionable ? 1 : 0;
 
   addStep(state, {
@@ -270,7 +278,9 @@ async function processDomain(
     score: audit.score,
     message: isActionable
       ? `ACTIONABLE — score ${audit.score} < threshold ${config.scoreThreshold}. Executing.`
-      : `NO ACTION — score ${audit.score} ≥ threshold ${config.scoreThreshold}. Passing.`,
+      : existingDeal.length > 0
+        ? `NO ACTION — existing deal #${existingDeal[0].id} already exists. Duplicate suppressed.`
+        : `NO ACTION — score ${audit.score} ≥ threshold ${config.scoreThreshold}. Passing.`,
   });
 
   if (!isActionable) return;
@@ -354,16 +364,6 @@ async function processDomain(
     .set({ lastDealId: newDeal.id })
     .where(eq(scanTargets.id, targetId));
 
-  // Log revenue event
-  await db.insert(revenueEvents).values({
-    opportunityId: newDeal.id,
-    industry: industry || null,
-    offerTier: tier,
-    acquisitionSource: source,
-    amount: String(bounty),
-    eventType: "checkout_created",
-  });
-
   addStep(state, {
     type: "deal_created",
     domain,
@@ -380,7 +380,18 @@ async function processDomain(
   }
 
   // ── Step 6: Generate and SEND outreach ──────────────────────────────────
-  if (config.autoGenerateOutreach) {
+  if (checkoutUrl) {
+    await db.insert(revenueEvents).values({
+      opportunityId: newDeal.id,
+      industry: industry || null,
+      offerTier: tier,
+      acquisitionSource: source,
+      amount: String(bounty),
+      eventType: "checkout_created",
+    });
+  }
+
+  if (config.autoGenerateOutreach && checkoutUrl) {
     state.summary.outreachGenerated++;
 
     const outreachResult = await sendOutreach(newDeal.id);
@@ -429,6 +440,21 @@ async function createCheckout(
       ? `Revenue & Deliverability Recovery — ${domain}`
       : `Deliverability Remediation — ${domain}`;
 
+    const [paymentRequest] = await db
+      .insert(paymentRequests)
+      .values({
+        opportunityId: dealId,
+        referenceCode,
+        provider: "stripe",
+        status: "draft",
+        amount: bounty.toFixed(2),
+        currency: "usd",
+        clientName: domain,
+        serviceDescription: serviceName,
+        paymentMethod: "card",
+      })
+      .returning({ id: paymentRequests.id });
+
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
@@ -449,28 +475,21 @@ async function createCheckout(
       cancel_url: `${process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "http://localhost:3000"}/?payment=cancelled&reference=${referenceCode}`,
       client_reference_id: referenceCode,
       metadata: {
-        paymentRequestId: "",
+        paymentRequestId: String(paymentRequest.id),
         referenceCode,
         opportunityId: String(dealId),
       },
     });
 
-    const [paymentRequest] = await db
-      .insert(paymentRequests)
-      .values({
-        opportunityId: dealId,
-        referenceCode,
-        provider: "stripe",
+    await db
+      .update(paymentRequests)
+      .set({
         status: "checkout_created",
-        amount: bounty.toFixed(2),
-        currency: "usd",
-        clientName: domain,
-        serviceDescription: serviceName,
-        paymentMethod: "card",
         providerSessionId: session.id,
         checkoutUrl: session.url || "",
+        updatedAt: new Date(),
       })
-      .returning();
+      .where(eq(paymentRequests.id, paymentRequest.id));
 
     state.summary.checkoutsCreated++;
 

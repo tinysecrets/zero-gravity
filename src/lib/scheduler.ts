@@ -68,7 +68,7 @@ function getState(): SchedulerState {
           scoreThreshold: 65,
           autoCreateDeals: true,
           autoGenerateOutreach: true,
-          autoCreateCheckout: false,
+          autoCreateCheckout: Boolean(process.env.STRIPE_SECRET_KEY),
         },
       },
       nextRunAt: null,
