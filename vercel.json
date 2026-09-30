@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/autonomous/cron",
-      "schedule": "*/15 * * * *"
+      "schedule": "0 13 * * *"
     }
   ]
 }
