@@ -38,6 +38,7 @@ export function Header({
   const tabs = [
     { id: "dossier", label: "Executive Dossier", icon: Terminal, badge: "Discovery" },
     { id: "pipeline", label: "Live Deal Room", icon: Layers, badge: `${metrics?.activeDealsCount || 6} Deals` },
+    { id: "autonomous", label: "Revenue Engine", icon: Cpu, badge: "AUTO" },
     { id: "scanner", label: "Live Diagnostic Tool", icon: Activity, badge: "Free Stack" },
     { id: "playbooks", label: "Execution SOPs & Contracts", icon: BookOpen, badge: "4 Vectors" },
     { id: "ledger", label: "Financial Ledger", icon: DollarSign, badge: `$${(metrics?.totalRealizedRevenue || 0).toLocaleString()}` },
