@@ -2,20 +2,13 @@
 
 import React, { useState } from "react";
 import { Transaction, FinancialMetrics, Opportunity } from "@/types";
-import { 
-  DollarSign, 
-  TrendingUp, 
-  ShieldCheck, 
-  Plus, 
-  ArrowDownRight, 
-  CheckCircle2, 
-  Clock, 
-  Wallet,
-  Building2,
+import {
+  CheckCircle2,
+  Clock,
+  DollarSign,
   FileSpreadsheet,
-  Zap,
   Layers,
-  Sparkles
+  Plus,
 } from "lucide-react";
 
 interface FinancialLedgerProps {
@@ -29,7 +22,7 @@ export function FinancialLedger({ transactions, metrics, deals, onAddTransaction
   const [showAddModal, setShowAddModal] = useState(false);
   const [amount, setAmount] = useState("");
   const [transactionType, setTransactionType] = useState("rev_share_commission");
-  const [paymentMethod, setPaymentMethod] = useState("Bank Wire Transfer");
+  const [paymentMethod, setPaymentMethod] = useState("External customer payment");
   const [description, setDescription] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -43,7 +36,6 @@ export function FinancialLedger({ transactions, metrics, deals, onAddTransaction
         transactionType,
         paymentMethod,
         description,
-        verified: true,
       });
       setShowAddModal(false);
       setAmount("");
@@ -55,10 +47,12 @@ export function FinancialLedger({ transactions, metrics, deals, onAddTransaction
     }
   };
 
-  const totalCollected = metrics?.totalRealizedRevenue || 0;
-  const grossVolume = metrics?.grossVolume || 0;
-  const capitalSpent = metrics?.totalCapitalSpent || 0;
-  const netProfit = totalCollected - capitalSpent;
+  const totalCollected = metrics?.totalRealizedRevenue;
+  const grossVolume = metrics?.grossVolume;
+  const capitalSpent = metrics?.totalCapitalSpent;
+  const formatUsd = (value: number | undefined) => value === undefined
+    ? "Unavailable"
+    : `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const settledByType = transactions
     .filter((tx) => tx.verified)
     .reduce<Record<string, number>>((totals, tx) => {
@@ -74,10 +68,10 @@ export function FinancialLedger({ transactions, metrics, deals, onAddTransaction
         <div>
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
             <DollarSign className="w-5 h-5 text-emerald-400" />
-            Financial Ledger &amp; Real-Time Audit Trail
+            Receipt Ledger &amp; Reconciliation
           </h2>
           <p className="text-xs text-zinc-400 mt-0.5">
-            Revenue appears only after provider-confirmed settlement; manually logged items remain pending reconciliation.
+            Manual entries stay pending until reconciled; only verified records contribute to the gross receipt total.
           </p>
         </div>
 
@@ -90,81 +84,61 @@ export function FinancialLedger({ transactions, metrics, deals, onAddTransaction
         </button>
       </div>
 
-      {/* KPI Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 font-mono">
-        <div className="p-5 rounded-2xl bg-zinc-950 border border-zinc-800 shadow-xl">
-          <div className="flex items-center justify-between text-zinc-500 text-xs mb-2">
-            <span>Starting Capital</span>
-            <span className="p-1 rounded bg-zinc-900 text-zinc-400">$0 Constraint</span>
-          </div>
-          <span className="text-2xl font-black text-white block">$0.00</span>
-          <span className="text-[11px] text-zinc-500 mt-1 block">Zero out-of-pocket investment</span>
+      <div className="rounded-xl border border-cyan-900/60 bg-cyan-950/20 p-4 text-xs leading-relaxed text-cyan-100/90">
+        <strong className="text-cyan-200">Receipt scope:</strong> the total below is gross customer payments from verified records. It is not net income, an available Stripe balance, or a bank payout. Processor fees, refunds, disputes, taxes, and payouts require separate reconciliation.
+      </div>
+
+      {/* Stored financial figures */}
+      <div className="grid grid-cols-1 gap-4 font-mono sm:grid-cols-2 lg:grid-cols-3">
+        <div className="rounded-2xl border border-emerald-800/60 bg-emerald-950/30 p-5 shadow-xl">
+          <div className="mb-2 text-xs text-emerald-400">Verified gross customer receipts</div>
+          <span className="block text-3xl font-black text-emerald-400">{formatUsd(totalCollected)}</span>
+          <span className="mt-1 block text-[11px] text-zinc-400">Provider-confirmed or reconciled records; not a payout balance.</span>
         </div>
 
-        <div className="p-5 rounded-2xl bg-emerald-950/30 border border-emerald-800/60 shadow-xl">
-          <div className="flex items-center justify-between text-emerald-400 text-xs mb-2">
-            <span>Realized Net Revenue</span>
-            <span className="p-1 rounded bg-emerald-900/60 text-emerald-300">100% Margin</span>
-          </div>
-          <span className="text-3xl font-black text-emerald-400 block">
-            ${totalCollected.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </span>
-          <span className="text-[11px] text-zinc-400 mt-1 block">Actual funds received by operator</span>
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-5 shadow-xl">
+          <div className="mb-2 text-xs text-cyan-400">Recorded gross opportunity value</div>
+          <span className="block text-2xl font-black text-cyan-300">{formatUsd(grossVolume)}</span>
+          <span className="mt-1 block text-[11px] text-zinc-500">Stored deal amounts may be estimates; they do not show value delivered or revenue earned.</span>
         </div>
 
-        <div className="p-5 rounded-2xl bg-zinc-950 border border-zinc-800 shadow-xl">
-          <div className="flex items-center justify-between text-cyan-400 text-xs mb-2">
-            <span>Gross Volume Facilitated</span>
-            <span className="p-1 rounded bg-cyan-950/60 text-cyan-300">Total Pipeline</span>
-          </div>
-          <span className="text-2xl font-black text-cyan-300 block">
-            ${grossVolume.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </span>
-          <span className="text-[11px] text-zinc-500 mt-1 block">Economic value unlocked for clients</span>
-        </div>
-
-        <div className="p-5 rounded-2xl bg-zinc-950 border border-zinc-800 shadow-xl">
-          <div className="flex items-center justify-between text-purple-400 text-xs mb-2">
-            <span>Capital Efficiency Ratio</span>
-            <span className="p-1 rounded bg-purple-950/60 text-purple-300">Infinite ROI</span>
-          </div>
-          <span className="text-2xl font-black text-purple-300 block">{totalCollected > 0 ? "∞ : 1" : "—"}</span>
-          <span className="text-[11px] text-zinc-500 mt-1 block">
-            {totalCollected > 0 ? "Verified revenue generated from $0.00" : "Awaiting a verified settlement"}
-          </span>
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-5 shadow-xl">
+          <div className="mb-2 text-xs text-amber-300">Spend recorded on opportunities</div>
+          <span className="block text-2xl font-black text-amber-300">{formatUsd(capitalSpent)}</span>
+          <span className="mt-1 block text-[11px] text-zinc-500">Not a complete expense report or a measure of starting capital.</span>
         </div>
       </div>
 
-      {/* Revenue Breakdown by Vector */}
-      <div className="p-6 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-4">
-        <h3 className="text-sm font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2">
-          <Layers className="w-4 h-4 text-emerald-400" />
-          Revenue Realization by Asymmetry Vector
+      {/* Verified receipts by category */}
+      <div className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-950 p-6">
+        <h3 className="flex items-center gap-2 text-sm font-mono font-bold uppercase tracking-wider text-white">
+          <Layers className="h-4 w-4 text-emerald-400" />
+          Verified gross receipts by recorded category
         </h3>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 font-mono text-xs">
           <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800">
-            <span className="text-zinc-500 text-[10px] block">Ghost Lead Revival</span>
+            <span className="text-zinc-500 text-[10px] block">Lead re-engagement</span>
             <span className="text-xl font-black text-emerald-400 block mt-1">${(settledByType.rev_share_commission || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-            <span className="text-[10px] text-zinc-400 block mt-1">Verified rev-share settlements</span>
+            <span className="text-[10px] text-zinc-400 block mt-1">Gross receipts in this category</span>
           </div>
 
           <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800">
-            <span className="text-zinc-500 text-[10px] block">Technical Leak Bounty</span>
+            <span className="text-zinc-500 text-[10px] block">Technical review</span>
             <span className="text-xl font-black text-cyan-400 block mt-1">${(settledByType.fix_bounty || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-            <span className="text-[10px] text-zinc-400 block mt-1">Provider-confirmed remediation bounties</span>
+            <span className="text-[10px] text-zinc-400 block mt-1">Gross receipts in this category</span>
           </div>
 
           <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800">
-            <span className="text-zinc-500 text-[10px] block">Micro-Sponsorship Broker</span>
+            <span className="text-zinc-500 text-[10px] block">Sponsorship</span>
             <span className="text-xl font-black text-purple-400 block mt-1">${(settledByType.sponsorship_brokerage || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-            <span className="text-[10px] text-zinc-400 block mt-1">Verified advertiser-settlement fees</span>
+            <span className="text-[10px] text-zinc-400 block mt-1">Gross receipts in this category</span>
           </div>
 
           <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800">
-            <span className="text-zinc-500 text-[10px] block">Micro-Purchase Solicitation</span>
+            <span className="text-zinc-500 text-[10px] block">Procurement</span>
             <span className="text-xl font-black text-amber-400 block mt-1">${(settledByType.finder_fee || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-            <span className="text-[10px] text-zinc-400 block mt-1">Verified procurement spread</span>
+            <span className="text-[10px] text-zinc-400 block mt-1">Gross receipts in this category</span>
           </div>
         </div>
       </div>
@@ -174,10 +148,10 @@ export function FinancialLedger({ transactions, metrics, deals, onAddTransaction
         <div className="p-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/60">
           <h3 className="text-xs font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2">
             <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
-            Verified Financial Transactions Log ({transactions.length} entries)
+            Receipt records ({transactions.length} entries)
           </h3>
           <span className="text-xs text-zinc-500 font-mono">
-            {pendingReconciliation} pending reconciliation · verified entries only count as cash
+            {pendingReconciliation} pending reconciliation · totals are gross receipts, not payouts
           </span>
         </div>
 
@@ -190,7 +164,7 @@ export function FinancialLedger({ transactions, metrics, deals, onAddTransaction
                 <th className="py-3 px-4">Description</th>
                 <th className="py-3 px-4">Settlement Rail</th>
                 <th className="py-3 px-4">Status</th>
-                <th className="py-3 px-4 text-right">Net Cash Received</th>
+                <th className="py-3 px-4 text-right">Gross Amount</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800/60 text-xs">
@@ -212,7 +186,7 @@ export function FinancialLedger({ transactions, metrics, deals, onAddTransaction
                     {tx.verified ? (
                       <span className="inline-flex items-center gap-1 text-emerald-400 text-[11px]">
                         <CheckCircle2 className="w-3.5 h-3.5" />
-                        Verified Cleared
+                        Verified record
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 text-amber-400 text-[11px]">
@@ -245,8 +219,10 @@ export function FinancialLedger({ transactions, metrics, deals, onAddTransaction
           <div className="bg-zinc-950 border border-zinc-800 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl p-6 space-y-4 font-mono text-xs">
             <h3 className="text-base font-bold text-white font-sans flex items-center gap-2">
               <Plus className="w-4 h-4 text-amber-400" />
-              Log External Payment for Reconciliation
+              Log an External Customer Payment
             </h3>
+
+            <p className="text-[11px] leading-relaxed text-zinc-400">Manual entries are saved as pending and do not count as verified receipts until reconciled.</p>
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
@@ -255,7 +231,7 @@ export function FinancialLedger({ transactions, metrics, deals, onAddTransaction
                   type="number"
                   required
                   step="0.01"
-                  placeholder="2400.00"
+                  placeholder="0.00"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                   className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-emerald-400 font-bold focus:outline-none focus:border-emerald-500"
@@ -269,25 +245,26 @@ export function FinancialLedger({ transactions, metrics, deals, onAddTransaction
                   onChange={(e) => setTransactionType(e.target.value)}
                   className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-200 focus:outline-none focus:border-emerald-500 cursor-pointer"
                 >
-                  <option value="rev_share_commission">Ghost Lead Revival (25% Commission)</option>
-                  <option value="fix_bounty">DNS / Deliverability Fix Bounty</option>
-                  <option value="sponsorship_brokerage">Micro-Sponsorship Brokerage Fee</option>
-                  <option value="finder_fee">Micro-Purchase Procurement Spread</option>
+                  <option value="rev_share_commission">Lead re-engagement service</option>
+                  <option value="fix_bounty">Technical review service</option>
+                  <option value="sponsorship_brokerage">Sponsorship service</option>
+                  <option value="finder_fee">Procurement support service</option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-zinc-400 mb-1">Settlement Rail / Method</label>
+                <label className="block text-zinc-400 mb-1">Inbound payment method</label>
                 <select
                   value={paymentMethod}
                   onChange={(e) => setPaymentMethod(e.target.value)}
                   className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-200 focus:outline-none focus:border-emerald-500 cursor-pointer"
                 >
-                  <option value="Bank Wire Transfer">Bank Wire Transfer</option>
-                  <option value="Stripe Direct Checkout">Stripe Direct Checkout</option>
-                  <option value="ACH Direct Deposit">ACH Direct Deposit</option>
-                  <option value="Wise Transfer">Wise Business</option>
-                  <option value="Zelle">Zelle Corporate</option>
+                  <option value="External customer payment">External customer payment</option>
+                  <option value="Bank Wire Transfer">External bank transfer received</option>
+                  <option value="Stripe Direct Checkout">Stripe Checkout received</option>
+                  <option value="ACH Direct Deposit">ACH received</option>
+                  <option value="Wise Transfer">Other external payment</option>
+                  <option value="Zelle">Other external payment method</option>
                 </select>
               </div>
 
@@ -296,7 +273,7 @@ export function FinancialLedger({ transactions, metrics, deals, onAddTransaction
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Apex Roofing LLC - 25% fee on closed roof replacement"
+                  placeholder="e.g. Customer invoice receipt — reference only"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white font-sans focus:outline-none focus:border-emerald-500"

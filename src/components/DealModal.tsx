@@ -31,12 +31,12 @@ interface DealModalProps {
 
 const ALL_STATUSES: { id: DealStatus; label: string }[] = [
   { id: "discovered", label: "1. Discovered" },
-  { id: "audited", label: "2. Audited & Packaged" },
+  { id: "audited", label: "2. Research recorded" },
   { id: "outreach_sent", label: "3. Outreach Sent" },
-  { id: "contract_signed", label: "4. Contract Signed (0% Upfront)" },
+  { id: "contract_signed", label: "4. Terms agreed" },
   { id: "in_execution", label: "5. In Execution" },
-  { id: "completed_invoiced", label: "6. Invoiced" },
-  { id: "revenue_collected", label: "7. Cash Collected" },
+  { id: "completed_invoiced", label: "6. Invoice prepared" },
+  { id: "revenue_collected", label: "7. Verified receipt" },
 ];
 
 export function DealModal({ deal, onClose, onUpdate, onDelete }: DealModalProps) {
@@ -209,7 +209,7 @@ export function DealModal({ deal, onClose, onUpdate, onDelete }: DealModalProps)
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 p-4 rounded-xl bg-zinc-900/60 border border-zinc-800">
                 <div>
                   <label className="block text-zinc-400 font-mono text-[11px] mb-1">
-                    Potential Value ($)
+                    Opportunity estimate ($)
                   </label>
                   <input
                     type="number"
@@ -221,7 +221,7 @@ export function DealModal({ deal, onClose, onUpdate, onDelete }: DealModalProps)
 
                 <div>
                   <label className="block text-zinc-400 font-mono text-[11px] mb-1">
-                    Operator Fee (%)
+                    Proposed fee rate (%)
                   </label>
                   <input
                     type="number"
@@ -233,7 +233,7 @@ export function DealModal({ deal, onClose, onUpdate, onDelete }: DealModalProps)
 
                 <div>
                   <label className="block text-zinc-400 font-mono text-[11px] mb-1">
-                    Gross Deal Volume ($)
+                    Recorded gross value ($)
                   </label>
                   <input
                     type="number"
@@ -245,13 +245,13 @@ export function DealModal({ deal, onClose, onUpdate, onDelete }: DealModalProps)
 
                 <div>
                   <label className="block text-zinc-400 font-mono text-[11px] mb-1">
-                    Verified Revenue ($)
+                    Verified gross receipts ($)
                   </label>
                   <input
                     type="number"
                     value={realizedRevenue}
                     readOnly
-                    title="Updated only after a verified Stripe settlement."
+                    title="Updated only after a verified live settlement or authorized reconciliation."
                     className="w-full cursor-not-allowed bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-emerald-400 font-mono font-bold text-xs outline-none"
                   />
                 </div>
@@ -266,7 +266,7 @@ export function DealModal({ deal, onClose, onUpdate, onDelete }: DealModalProps)
                       Prepare Secure Checkout
                     </span>
                     <span className="text-zinc-400 text-[11px]">
-                      Set this deal to invoiced, then use “Request Secure Payment” to create the Stripe checkout link.
+                      Save the opportunity as invoice-preparation work, then create a voluntary Stripe Checkout request. No payment is recorded until a verified live settlement.
                     </span>
                   </div>
                 </div>
@@ -305,7 +305,7 @@ export function DealModal({ deal, onClose, onUpdate, onDelete }: DealModalProps)
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-zinc-400 font-mono">
-                  Custom Contingency Outreach Pitch (Ready to Send)
+                  Outreach draft (review facts and permissions before sending)
                 </span>
                 <button
                   onClick={() => copyToClipboard(outreachMessage, "pitch")}

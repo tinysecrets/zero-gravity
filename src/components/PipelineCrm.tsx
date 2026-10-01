@@ -2,26 +2,7 @@
 
 import React, { useState } from "react";
 import { Opportunity, DealVector, DealStatus } from "@/types";
-import { 
-  Search, 
-  Filter, 
-  Plus, 
-  ArrowUpRight, 
-  Clock, 
-  DollarSign, 
-  Layers, 
-  CheckCircle, 
-  AlertCircle, 
-  Mail, 
-  Phone, 
-  ChevronRight,
-  ShieldAlert,
-  Sparkles,
-  TrendingUp,
-  FileCheck2,
-  Send,
-  Zap
-} from "lucide-react";
+import { Filter, Plus, Search } from "lucide-react";
 
 interface PipelineCrmProps {
   deals: Opportunity[];
@@ -32,19 +13,19 @@ interface PipelineCrmProps {
 
 const STAGES: { id: DealStatus; label: string; color: string }[] = [
   { id: "discovered", label: "1. Discovered", color: "border-zinc-700 bg-zinc-900/50 text-zinc-300" },
-  { id: "audited", label: "2. Audited & Packaged", color: "border-blue-900/60 bg-blue-950/20 text-blue-300" },
+  { id: "audited", label: "2. Research recorded", color: "border-blue-900/60 bg-blue-950/20 text-blue-300" },
   { id: "outreach_sent", label: "3. Outreach Sent", color: "border-amber-900/60 bg-amber-950/20 text-amber-300" },
-  { id: "contract_signed", label: "4. Contract Signed (0% Upfront)", color: "border-purple-900/60 bg-purple-950/20 text-purple-300" },
+  { id: "contract_signed", label: "4. Terms agreed", color: "border-purple-900/60 bg-purple-950/20 text-purple-300" },
   { id: "in_execution", label: "5. In Execution", color: "border-indigo-900/60 bg-indigo-950/20 text-indigo-300" },
-  { id: "completed_invoiced", label: "6. Invoiced", color: "border-cyan-900/60 bg-cyan-950/20 text-cyan-300" },
-  { id: "revenue_collected", label: "7. Cash Collected", color: "border-emerald-700 bg-emerald-950/40 text-emerald-300" },
+  { id: "completed_invoiced", label: "6. Invoice prepared", color: "border-cyan-900/60 bg-cyan-950/20 text-cyan-300" },
+  { id: "revenue_collected", label: "7. Verified receipt", color: "border-emerald-700 bg-emerald-950/40 text-emerald-300" },
 ];
 
 const VECTOR_BADGES: Record<DealVector, { label: string; bg: string; text: string }> = {
-  lead_reactivation: { label: "Ghost Lead Revival", bg: "bg-emerald-950/60 border-emerald-800/60", text: "text-emerald-300" },
-  technical_leak_audit: { label: "Technical Leak Bounty", bg: "bg-cyan-950/60 border-cyan-800/60", text: "text-cyan-300" },
-  micro_sponsorship: { label: "Micro-Sponsorship Broker", bg: "bg-purple-950/60 border-purple-800/60", text: "text-purple-300" },
-  public_micro_purchase: { label: "Micro-Purchase Solicitation", bg: "bg-amber-950/60 border-amber-800/60", text: "text-amber-300" },
+  lead_reactivation: { label: "Inquiry follow-up", bg: "bg-emerald-950/60 border-emerald-800/60", text: "text-emerald-300" },
+  technical_leak_audit: { label: "Technical review", bg: "bg-cyan-950/60 border-cyan-800/60", text: "text-cyan-300" },
+  micro_sponsorship: { label: "Sponsorship", bg: "bg-purple-950/60 border-purple-800/60", text: "text-purple-300" },
+  public_micro_purchase: { label: "Procurement research", bg: "bg-amber-950/60 border-amber-800/60", text: "text-amber-300" },
 };
 
 export function PipelineCrm({ deals, onSelectDeal, onOpenNewDeal, isLoading }: PipelineCrmProps) {
@@ -63,6 +44,7 @@ export function PipelineCrm({ deals, onSelectDeal, onOpenNewDeal, isLoading }: P
 
   const totalRealized = filteredDeals.reduce((sum, d) => sum + parseFloat(d.realizedRevenue || "0"), 0);
   const totalPipeline = filteredDeals.reduce((sum, d) => sum + parseFloat(d.potentialValue || "0"), 0);
+  const verifiedReceiptDeals = filteredDeals.filter((deal) => deal.status === "revenue_collected").length;
 
   return (
     <div className="space-y-6">
@@ -88,11 +70,11 @@ export function PipelineCrm({ deals, onSelectDeal, onOpenNewDeal, isLoading }: P
               onChange={(e) => setSelectedVector(e.target.value)}
               className="bg-zinc-950 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 focus:outline-none focus:border-emerald-500 cursor-pointer"
             >
-              <option value="all">All 4 Vectors</option>
+              <option value="all">All categories</option>
               <option value="lead_reactivation">Lead Reactivation</option>
-              <option value="technical_leak_audit">Technical Leak Bounty</option>
-              <option value="micro_sponsorship">Micro-Sponsorship Broker</option>
-              <option value="public_micro_purchase">Micro-Purchase Public</option>
+              <option value="technical_leak_audit">Technical review</option>
+              <option value="micro_sponsorship">Sponsorship</option>
+              <option value="public_micro_purchase">Procurement research</option>
             </select>
           </div>
         </div>
@@ -123,7 +105,7 @@ export function PipelineCrm({ deals, onSelectDeal, onOpenNewDeal, isLoading }: P
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs shadow transition cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>Add Deal</span>
+            <span>Add opportunity</span>
           </button>
         </div>
       </div>
@@ -131,24 +113,26 @@ export function PipelineCrm({ deals, onSelectDeal, onOpenNewDeal, isLoading }: P
       {/* Summary Chips */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="p-3 rounded-lg bg-zinc-900/40 border border-zinc-800">
-          <span className="text-[11px] text-zinc-400 font-mono">Total Tracked Deals</span>
+          <span className="text-[11px] text-zinc-400 font-mono">Stored opportunity records</span>
           <span className="text-lg font-bold text-white font-mono block mt-0.5">{filteredDeals.length}</span>
         </div>
         <div className="p-3 rounded-lg bg-zinc-900/40 border border-zinc-800">
-          <span className="text-[11px] text-zinc-400 font-mono">Weighted Pipeline Value</span>
+          <span className="text-[11px] text-zinc-400 font-mono">Recorded opportunity estimates</span>
           <span className="text-lg font-bold text-cyan-400 font-mono block mt-0.5">
             ${totalPipeline.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </span>
+          <span className="mt-1 block text-[10px] leading-relaxed text-zinc-500">Stored estimates; not commitments or collected revenue.</span>
         </div>
         <div className="p-3 rounded-lg bg-emerald-950/20 border border-emerald-800/40">
-          <span className="text-[11px] text-emerald-400 font-mono">Realized Cash Revenue</span>
+          <span className="text-[11px] text-emerald-400 font-mono">App-recorded gross receipts</span>
           <span className="text-lg font-bold text-emerald-400 font-mono block mt-0.5">
             ${totalRealized.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </span>
+          <span className="mt-1 block text-[10px] leading-relaxed text-zinc-500">Gross verified amounts; fees and payouts are not shown.</span>
         </div>
         <div className="p-3 rounded-lg bg-zinc-900/40 border border-zinc-800">
-          <span className="text-[11px] text-zinc-400 font-mono">Avg Contingency Fee</span>
-          <span className="text-lg font-bold text-purple-400 font-mono block mt-0.5">26.5%</span>
+          <span className="text-[11px] text-zinc-400 font-mono">Records in verified-receipt stage</span>
+          <span className="text-lg font-bold text-purple-400 font-mono block mt-0.5">{verifiedReceiptDeals}</span>
         </div>
       </div>
 
@@ -210,11 +194,11 @@ export function PipelineCrm({ deals, onSelectDeal, onOpenNewDeal, isLoading }: P
                         {/* Financial figures */}
                         <div className="mt-3 pt-2 border-t border-zinc-800 flex items-center justify-between font-mono text-[11px]">
                           <div>
-                            <span className="text-zinc-500 block text-[9px]">Potential</span>
+                            <span className="text-zinc-500 block text-[9px]">Recorded estimate</span>
                             <span className="text-zinc-300">${parseFloat(deal.potentialValue).toLocaleString()}</span>
                           </div>
                           <div className="text-right">
-                            <span className="text-zinc-500 block text-[9px]">Realized Rev</span>
+                            <span className="text-zinc-500 block text-[9px]">Verified gross</span>
                             <span className={`font-bold ${parseFloat(deal.realizedRevenue) > 0 ? "text-emerald-400" : "text-zinc-500"}`}>
                               ${parseFloat(deal.realizedRevenue).toLocaleString()}
                             </span>
@@ -244,10 +228,10 @@ export function PipelineCrm({ deals, onSelectDeal, onOpenNewDeal, isLoading }: P
                   <th className="py-3 px-4">Deal / Target Company</th>
                   <th className="py-3 px-4">Vector</th>
                   <th className="py-3 px-4">Status</th>
-                  <th className="py-3 px-4">Est. Pipeline</th>
-                  <th className="py-3 px-4">Take Rate</th>
-                  <th className="py-3 px-4">Gross Vol</th>
-                  <th className="py-3 px-4">Realized Cash</th>
+                  <th className="py-3 px-4">Recorded estimate</th>
+                  <th className="py-3 px-4">Proposed fee</th>
+                  <th className="py-3 px-4">Gross recorded value</th>
+                  <th className="py-3 px-4">Verified gross</th>
                   <th className="py-3 px-4 text-right">Action</th>
                 </tr>
               </thead>

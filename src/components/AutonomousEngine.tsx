@@ -399,16 +399,15 @@ export function AutonomousEngine() {
       <div>
         <h2 className="text-xl font-bold text-white flex items-center gap-2">
           <Cpu className="w-5 h-5 text-purple-400" />
-          Autonomous Revenue Engine
+          Workflow Scheduler & Payment Controls
         </h2>
         <p className="text-xs text-zinc-400 mt-0.5">
-          Audits reviewed prospects, drafts offers, optionally sends checkout links, and records customer-approved Stripe payments on a persistent schedule. This app does not transfer money out or make bank payouts.
+          Configured jobs may review public inputs and create drafts; outreach and Checkout require separate opt-ins and customer action. Gross customer receipts are recorded after verification. This app does not initiate bank or third-party payouts.
         </p>
       </div>
 
       <div className="rounded-xl border border-cyan-900/60 bg-cyan-950/20 p-4 text-xs leading-relaxed text-zinc-300">
-        Vercel Cron runs without page visits. Funds are received only when a customer completes Stripe Checkout.
-        Bank linking and payout schedules are managed in your Stripe Dashboard; payment confirmation is not proof of a bank payout.
+        When configured, Vercel Cron can invoke jobs without a page visit. This screen reports configuration/readiness, not proof that a production cycle succeeded; verify execution in Vercel Cron history and function logs. A Checkout request is not a receipt. Bank balance and payout status are separate and are not reported here.
         {readiness?.paymentMode === "test" && <p className="mt-2 font-bold text-amber-300">Stripe test mode: no real funds or verified revenue. Email goes only to OUTREACH_TEST_RECIPIENT.</p>}
       </div>
       {notice && <div role="status" className="rounded-xl border border-zinc-700 bg-zinc-900 p-4 text-xs text-zinc-300">{notice}</div>}
@@ -424,7 +423,7 @@ export function AutonomousEngine() {
       {feedback && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 font-mono text-xs">
           <div className="p-4 rounded-xl bg-emerald-950/30 border border-emerald-800/60">
-            <span className="text-emerald-400 text-[10px] block">Verified Revenue</span>
+            <span className="text-emerald-400 text-[10px] block">Verified gross receipts</span>
             <span className="text-xl font-black text-emerald-400 mt-0.5 block">
               ${feedback.kpi.verifiedRevenue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
             </span>
@@ -434,7 +433,7 @@ export function AutonomousEngine() {
             <span className="text-xl font-black text-white mt-0.5 block">{feedback.kpi.totalProspects}</span>
           </div>
           <div className="p-4 rounded-xl bg-purple-950/30 border border-purple-800/60">
-            <span className="text-purple-400 text-[10px] block">Revenue / 1K Prospects</span>
+            <span className="text-purple-400 text-[10px] block">Gross receipts / 1K recorded prospects</span>
             <span className="text-xl font-black text-purple-400 mt-0.5 block">
               ${Number(feedback.kpi.revenuePerThousand).toLocaleString()}
             </span>
@@ -455,7 +454,7 @@ export function AutonomousEngine() {
           Prospect Acquisition
         </h3>
         <p className="text-[11px] text-zinc-400">
-          Pull domains from Certificate Transparency logs (free, no API key), portfolio discovery, or bulk import. New domains are added as scan targets automatically.
+          You can import domains from a source you are authorized to use or review public certificate records. Source coverage, terms, rate limits, and costs vary; verify them before use. Added domains become scan targets, not verified prospects or customers.
         </p>
 
         <form onSubmit={handleAcquire} className="flex flex-wrap items-end gap-3">

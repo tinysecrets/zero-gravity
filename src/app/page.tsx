@@ -189,13 +189,7 @@ export default function HomePage() {
           />
         )}
 
-        {activeTab === "advisor" && (
-          <AiStrategyAdvisor
-            onAddDealFromAdvisor={async (deal) => {
-              await handleCreateDeal(deal);
-            }}
-          />
-        )}
+        {activeTab === "advisor" && <AiStrategyAdvisor />}
       </main>
 
       {/* Deal Detail Modal */}
@@ -215,7 +209,7 @@ export default function HomePage() {
         onCreate={handleCreateDeal}
       />
 
-      {/* Instant Cash / Payment Clearance Modal */}
+      {/* Customer-initiated Stripe Checkout request modal */}
       <InstantPaymentModal
         isOpen={isPaymentModalOpen}
         onClose={() => setIsPaymentModalOpen(false)}

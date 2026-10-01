@@ -1,26 +1,17 @@
 "use client";
 
 import React from "react";
-import { FinancialMetrics } from "@/types";
-import { 
-  CheckCircle2, 
-  XCircle, 
-  ArrowRight, 
-  DollarSign, 
-  ShieldCheck, 
-  Flame, 
-  Zap, 
-  Cpu, 
-  Clock, 
-  BarChart3, 
-  FileText, 
-  Crosshair,
-  TrendingUp,
-  Sparkles,
-  Search,
+import {
   Activity,
-  Layers
+  ArrowRight,
+  BarChart3,
+  CheckCircle2,
+  Layers,
+  Search,
+  ShieldCheck,
+  Sparkles,
 } from "lucide-react";
+import { FinancialMetrics } from "@/types";
 
 interface ExecutiveDossierProps {
   onNavigateTab: (tab: string) => void;
@@ -29,437 +20,303 @@ interface ExecutiveDossierProps {
   metrics: FinancialMetrics | null;
 }
 
+function formatUsd(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "Unavailable";
+  return `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 export function ExecutiveDossier({
   onNavigateTab,
   onOpenScanner,
   onOpenAdvisor,
   metrics,
 }: ExecutiveDossierProps) {
-  const verifiedCash = metrics?.totalRealizedRevenue || 0;
-  const pipelineVolume = metrics?.grossVolume || 0;
-  const margin = metrics?.profitMargin || "0.0%";
+  const verifiedReceipts = metrics?.totalRealizedRevenue;
+  const recordedOpportunityValue = metrics?.grossVolume;
+  const opportunityCount = metrics?.activeDealsCount;
+
+  const steps = [
+    {
+      label: "Technical check",
+      detail: "A public DNS observation is not proof of inbox placement, lost revenue, or a security incident.",
+    },
+    {
+      label: "Opportunity record",
+      detail: "Stored values may be estimates. A record does not prove a prospect, agreement, or active customer.",
+    },
+    {
+      label: "Payment request",
+      detail: "A Stripe Checkout link is an optional request. The customer decides whether to pay.",
+    },
+    {
+      label: "Receipt reporting",
+      detail: "A signed live payment event can record a gross receipt; it does not show a Stripe balance or bank payout.",
+    },
+  ];
 
   return (
-    <div className="space-y-10 pb-16">
-      {/* Hero Executive Summary Card */}
-      <div className="relative overflow-hidden rounded-2xl border border-zinc-800 bg-gradient-to-b from-zinc-900/90 via-zinc-950 to-black p-6 md:p-10 shadow-2xl">
-        <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 rounded-full bg-emerald-500/10 blur-3xl pointer-events-none"></div>
-        <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-80 h-80 rounded-full bg-cyan-500/10 blur-3xl pointer-events-none"></div>
-
+    <div className="space-y-8 pb-16">
+      <section className="relative overflow-hidden rounded-2xl border border-zinc-800 bg-gradient-to-b from-zinc-900/90 via-zinc-950 to-black p-6 shadow-2xl md:p-10">
+        <div className="pointer-events-none absolute -right-20 -top-20 h-80 w-80 rounded-full bg-emerald-500/10 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-20 -left-20 h-80 w-80 rounded-full bg-cyan-500/10 blur-3xl" />
         <div className="relative z-10">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-mono text-xs font-semibold mb-4">
-            <Flame className="w-3.5 h-3.5 text-emerald-400" />
-            MISSION REPORT: $0 TO REAL REVENUE DEPLOYED
+          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-cyan-500/30 bg-cyan-500/10 px-3 py-1 font-mono text-xs font-semibold text-cyan-300">
+            <Activity className="h-3.5 w-3.5" />
+            CUSTOMER-PAYMENT WORKSPACE · RESULTS NOT IMPLIED
           </div>
-
-          <h2 className="text-2xl md:text-4xl font-extrabold text-white tracking-tight leading-tight">
-            The $0-Capital Asymmetry Engine:
-            <br />
-            <span className="bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400 bg-clip-text text-transparent">
-              How AI Discovers and Harvests Unclaimed Value
-            </span>
+          <h2 className="text-2xl font-extrabold leading-tight tracking-tight text-white md:text-4xl">
+            A clear record of opportunities, work, and customer receipts
           </h2>
-
-          <p className="mt-4 text-zinc-300 text-sm md:text-base leading-relaxed max-w-4xl">
-            Most people fail to make money online with $0 because they pursue over-saturated, zero-leverage consumer tasks (surveys, print-on-demand, drop-shipping) or try to sell commoditized services to broke clients. 
-            We rejected conventional advice and engineered a high-leverage protocol targeting <strong>structural inefficiencies in high-ticket B2B markets</strong> using 100% free tooling and pure performance contingency agreements.
+          <p className="mt-4 max-w-4xl text-sm leading-relaxed text-zinc-300 md:text-base">
+            Zero Gravity provides tools for recording opportunities, reviewing public DNS signals, and creating optional customer-initiated Stripe Checkout requests. It does not promise income, client outcomes, conversion rates, payment timing, or zero operating costs. This page also cannot confirm that a production Vercel Cron job or outreach campaign is running.
           </p>
 
-          {/* Core Metrics Highlight */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8">
-            <div className="p-4 rounded-xl bg-zinc-900/80 border border-zinc-800">
-              <span className="text-xs text-zinc-400 font-mono block">Starting Capital</span>
-              <span className="text-2xl font-black text-emerald-400 font-mono mt-1 block">$0.00</span>
-              <span className="text-[11px] text-zinc-500 mt-1 block">Zero upfront financial risk</span>
-            </div>
-
-            <div className="p-4 rounded-xl bg-zinc-900/80 border border-zinc-800">
-              <span className="text-xs text-zinc-400 font-mono block">Verified Settled Revenue</span>
-              <span className="text-2xl font-black text-emerald-400 font-mono mt-1 block">${verifiedCash.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-              <span className="text-[11px] text-zinc-500 mt-1 block">Only Stripe-confirmed or reconciled funds</span>
-            </div>
-
-            <div className="p-4 rounded-xl bg-zinc-900/80 border border-zinc-800">
-              <span className="text-xs text-zinc-400 font-mono block">Gross Pipeline Volume</span>
-              <span className="text-2xl font-black text-cyan-400 font-mono mt-1 block">${pipelineVolume.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-              <span className="text-[11px] text-zinc-500 mt-1 block">Projected value; not collected cash</span>
-            </div>
-
-            <div className="p-4 rounded-xl bg-zinc-900/80 border border-zinc-800">
-              <span className="text-xs text-zinc-400 font-mono block">Verified Net Margin</span>
-              <span className="text-2xl font-black text-emerald-400 font-mono mt-1 block">{margin}</span>
-              <span className="text-[11px] text-zinc-500 mt-1 block">Calculated from settled revenue only</span>
-            </div>
+          <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <MetricCard
+              label="Verified customer receipts · gross"
+              value={formatUsd(verifiedReceipts)}
+              caption="App-recorded from verified settlement records; not net proceeds or a payout."
+              tone="emerald"
+            />
+            <MetricCard
+              label="Recorded opportunity value"
+              value={formatUsd(recordedOpportunityValue)}
+              caption="Stored deal values may be estimates; they are not collected revenue."
+              tone="cyan"
+            />
+            <MetricCard
+              label="Opportunity records"
+              value={opportunityCount === undefined ? "Unavailable" : opportunityCount.toLocaleString()}
+              caption="A record count does not establish a prospect or customer relationship."
+              tone="purple"
+            />
+            <MetricCard
+              label="Starting capital"
+              value="Not tracked"
+              caption="The dashboard does not independently verify an initial-capital figure."
+              tone="amber"
+            />
           </div>
         </div>
+      </section>
+
+      <div className="rounded-xl border border-amber-800/70 bg-amber-950/20 p-4 text-xs leading-relaxed text-amber-100/90">
+        <strong className="text-amber-200">How to read the money figures:</strong> customer receipts are reported gross, before processor fees and any separate refund or dispute reconciliation. Stripe balance availability and bank payouts are not shown here, and this app does not initiate bank or third-party transfers.
       </div>
 
-      {/* 4-Part Executive Report Sections */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Section 1: What We Discovered */}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-6 flex flex-col justify-between">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <section className="flex flex-col justify-between rounded-xl border border-zinc-800 bg-zinc-900/60 p-6">
           <div>
-            <div className="flex items-center gap-2 text-emerald-400 font-mono text-xs font-semibold uppercase mb-2">
-              <Search className="w-4 h-4" />
-              1. What We Discovered
+            <div className="mb-2 flex items-center gap-2 font-mono text-xs font-semibold uppercase text-emerald-400">
+              <Search className="h-4 w-4" />
+              What the workspace can record
             </div>
-            <h3 className="text-lg font-bold text-white mb-3">
-              The 4 Structural Asymmetries of the Internet
-            </h3>
-            <p className="text-zinc-300 text-xs leading-relaxed mb-4">
-              Money moves when you solve acute, expensive problems for entities that already possess budget. When starting with $0, you cannot buy traffic. Therefore, you must harness <strong>pre-existing intent, dormant databases, or public mandates</strong>:
-            </p>
-
-            <ul className="space-y-2.5 text-xs text-zinc-300">
+            <h3 className="mb-3 text-lg font-bold text-white">Signals and estimates need context</h3>
+            <ul className="space-y-3 text-xs leading-relaxed text-zinc-300">
               <li className="flex items-start gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                <span><strong>The Ghost Asset Asymmetry:</strong> High-ticket contractors have 800-2,500 past paid inquiries sitting dead in CRM spreadsheets. That list holds $50k+ in unharvested revenue that costs $0 to reactivate.</span>
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
+                <span><strong>Public DNS checks:</strong> observations about published records only; they do not prove email delivery problems or a revenue loss.</span>
               </li>
               <li className="flex items-start gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                <span><strong>The Silent Deliverability Crisis:</strong> Google/Yahoo 2024+ DMARC rules broke thousands of B2B email domains. They lose deals daily without knowing it; we spot and fix it in 15 mins for a $350 bounty.</span>
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
+                <span><strong>Opportunity entries:</strong> operator-entered details and estimates; verify identity, source, permission, and value before relying on them.</span>
               </li>
               <li className="flex items-start gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                <span><strong>Niche Audience Zero-Inventory Brokerage:</strong> High-ticket micro-newsletters (2k-5k technical subscribers) have 55% open rates but no ad sales team. B2B SaaS will pay $1k-$3k for targeted slots.</span>
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
+                <span><strong>Outreach drafts:</strong> review every factual statement, recipient, and legal basis before sending. A draft is not evidence of contact or interest.</span>
               </li>
               <li className="flex items-start gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                <span><strong>Micro-Purchase Fast-Track:</strong> Public agencies have statutory micro-purchase thresholds (&lt;$10k-$25k) requiring no formal RFP, just 1-3 direct quotes.</span>
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
+                <span><strong>Checkout requests:</strong> customers choose whether to complete payment; creating a link does not create a charge or receipt.</span>
               </li>
             </ul>
           </div>
-
-          <div className="mt-6 pt-4 border-t border-zinc-800 flex items-center justify-between">
-            <span className="text-xs text-zinc-400">Zero capital required</span>
+          <div className="mt-6 flex items-center justify-between border-t border-zinc-800 pt-4">
+            <span className="text-xs text-zinc-400">Check deployment logs for runtime proof</span>
             <button
-              onClick={() => onNavigateTab("playbooks")}
-              className="text-xs text-emerald-400 hover:text-emerald-300 font-medium inline-flex items-center gap-1 cursor-pointer"
+              onClick={() => onNavigateTab("autonomous")}
+              className="inline-flex cursor-pointer items-center gap-1 text-xs font-medium text-emerald-400 hover:text-emerald-300"
             >
-              Explore Full SOPs <ArrowRight className="w-3.5 h-3.5" />
+              Review scheduler controls <ArrowRight className="h-3.5 w-3.5" />
             </button>
           </div>
-        </div>
+        </section>
 
-        {/* Section 2: What We Did (The Action Protocol) */}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-6 flex flex-col justify-between">
+        <section className="flex flex-col justify-between rounded-xl border border-zinc-800 bg-zinc-900/60 p-6">
           <div>
-            <div className="flex items-center gap-2 text-cyan-400 font-mono text-xs font-semibold uppercase mb-2">
-              <Zap className="w-4 h-4" />
-              2. What We Did
+            <div className="mb-2 flex items-center gap-2 font-mono text-xs font-semibold uppercase text-cyan-400">
+              <BarChart3 className="h-4 w-4" />
+              How to interpret activity
             </div>
-            <h3 className="text-lg font-bold text-white mb-3">
-              The 6-Step Autonomous Execution Cycle
-            </h3>
-            <p className="text-zinc-300 text-xs leading-relaxed mb-4">
-              We eliminated upfront sales resistance by utilizing <strong>Pure Performance &amp; Escrow Contingency</strong>. The client takes zero financial risk, which compresses the sales cycle from weeks to under 48 hours:
-            </p>
-
-            <div className="space-y-2 font-mono text-xs">
-              <div className="p-2 rounded bg-black/40 border border-zinc-800 flex items-center justify-between">
-                <span className="text-zinc-400">1. Opportunity Identification</span>
-                <span className="text-emerald-400">Automated DNS &amp; CRM Scans</span>
-              </div>
-              <div className="p-2 rounded bg-black/40 border border-zinc-800 flex items-center justify-between">
-                <span className="text-zinc-400">2. Irresistible 100% Contingency Pitch</span>
-                <span className="text-cyan-400">"Pay only when you get paid"</span>
-              </div>
-              <div className="p-2 rounded bg-black/40 border border-zinc-800 flex items-center justify-between">
-                <span className="text-zinc-400">3. Ironclad 1-Page Legal Agreement</span>
-                <span className="text-purple-400">20-30% Contingency Clause</span>
-              </div>
-              <div className="p-2 rounded bg-black/40 border border-zinc-800 flex items-center justify-between">
-                <span className="text-zinc-400">4. Free Automation Fulfillment</span>
-                <span className="text-amber-400">Make.com / DNS / Google Sheets</span>
-              </div>
-              <div className="p-2 rounded bg-black/40 border border-zinc-800 flex items-center justify-between">
-                <span className="text-zinc-400">5. Cash Settlement &amp; Wire/Stripe</span>
-                <span className="text-emerald-400">Net 48hr Remittance</span>
-              </div>
+            <h3 className="mb-3 text-lg font-bold text-white">A workflow is not a result</h3>
+            <div className="space-y-2">
+              {steps.map((step, index) => (
+                <div key={step.label} className="flex items-start gap-3 rounded-lg border border-zinc-800 bg-black/30 p-3 text-xs">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-cyan-800 bg-cyan-950 font-mono font-bold text-cyan-300">
+                    {index + 1}
+                  </span>
+                  <div>
+                    <div className="font-semibold text-white">{step.label}</div>
+                    <p className="mt-0.5 leading-relaxed text-zinc-400">{step.detail}</p>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
-
-          <div className="mt-6 pt-4 border-t border-zinc-800 flex items-center justify-between">
-            <span className="text-xs text-zinc-400">Zero ad spend incurred</span>
-            <button
-              onClick={() => onNavigateTab("pipeline")}
-              className="text-xs text-cyan-400 hover:text-cyan-300 font-medium inline-flex items-center gap-1 cursor-pointer"
-            >
-              View Live Deal Pipeline <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-
-        {/* Section 3: What Happened & The Numbers */}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-6 flex flex-col justify-between">
-          <div>
-            <div className="flex items-center gap-2 text-emerald-400 font-mono text-xs font-semibold uppercase mb-2">
-              <BarChart3 className="w-4 h-4" />
-              3. What Happened &amp; The Numbers
-            </div>
-            <h3 className="text-lg font-bold text-white mb-3">
-              Pipeline Scenarios + Verified Cash: $${verifiedCash.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </h3>
-            <p className="text-zinc-300 text-xs leading-relaxed mb-4">
-              These are active pipeline scenarios and their projected operator fees. The verified ledger is the sole source of collected-cash reporting.
-            </p>
-
-            <div className="space-y-2.5 text-xs text-zinc-300">
-              <div className="flex items-center justify-between p-2.5 rounded-lg bg-zinc-950 border border-zinc-800/80">
-                <div>
-                  <div className="font-semibold text-white">Scenario: Apex Roofing (Dead Lead Revival)</div>
-                  <div className="text-[11px] text-zinc-400">1,140 dormant leads ➔ 3 projected projects ($28,400 GTV)</div>
-                </div>
-                <div className="text-right">
-                  <span className="text-emerald-400 font-mono font-bold block">Est. $7,100.00</span>
-                  <span className="text-[10px] text-zinc-500 font-mono">Projected 25% fee</span>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between p-2.5 rounded-lg bg-zinc-950 border border-zinc-800/80">
-                <div>
-                  <div className="font-semibold text-white">Scenario: Vanguard Wealth (DNS DMARC Bounty)</div>
-                  <div className="text-[11px] text-zinc-400">15-min Cloudflare DNS patch scope</div>
-                </div>
-                <div className="text-right">
-                  <span className="text-emerald-400 font-mono font-bold block">Inv. $450.00</span>
-                  <span className="text-[10px] text-zinc-500 font-mono">Awaiting secure checkout</span>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between p-2.5 rounded-lg bg-zinc-950 border border-zinc-800/80">
-                <div>
-                  <div className="font-semibold text-white">Scenario: Rust Dev Digest (Sponsorship Broker)</div>
-                  <div className="text-[11px] text-zinc-400">3-issue B2B SaaS placement proposal ($3,600 GTV)</div>
-                </div>
-                <div className="text-right">
-                  <span className="text-emerald-400 font-mono font-bold block">Est. $1,080.00</span>
-                  <span className="text-[10px] text-zinc-500 font-mono">Projected 30% fee</span>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between p-2.5 rounded-lg bg-zinc-950 border border-zinc-800/80">
-                <div>
-                  <div className="font-semibold text-white">Scenario: State Poly Library (ADA Compliance RFP)</div>
-                  <div className="text-[11px] text-zinc-400">Public micro-purchase invoice example</div>
-                </div>
-                <div className="text-right">
-                  <span className="text-cyan-400 font-mono font-bold block">Est. $1,350.00</span>
-                  <span className="text-[10px] text-amber-400 font-mono">Projected Net-15 spread</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-6 pt-4 border-t border-zinc-800 flex items-center justify-between">
-            <span className="text-xs text-emerald-400 font-mono font-semibold">Verified Cash Collected: ${verifiedCash.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          <div className="mt-6 flex items-center justify-between border-t border-zinc-800 pt-4">
+            <span className="text-xs text-zinc-400">Only verified events count as receipts</span>
             <button
               onClick={() => onNavigateTab("ledger")}
-              className="text-xs text-emerald-400 hover:text-emerald-300 font-medium inline-flex items-center gap-1 cursor-pointer"
+              className="inline-flex cursor-pointer items-center gap-1 text-xs font-medium text-cyan-400 hover:text-cyan-300"
             >
-              Inspect Full Ledger <ArrowRight className="w-3.5 h-3.5" />
+              Review receipt ledger <ArrowRight className="h-3.5 w-3.5" />
             </button>
           </div>
-        </div>
+        </section>
 
-        {/* Section 4: What We Would Do Next */}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-6 flex flex-col justify-between">
-          <div>
-            <div className="flex items-center gap-2 text-purple-400 font-mono text-xs font-semibold uppercase mb-2">
-              <Sparkles className="w-4 h-4" />
-              4. What We Would Do Next
-            </div>
-            <h3 className="text-lg font-bold text-white mb-3">
-              Scaling Roadmap: $0 ➔ $10k/mo ➔ $50k/mo
-            </h3>
-            <p className="text-zinc-300 text-xs leading-relaxed mb-4">
-              After the first verified settlement establishes unit economics, deploy programmatic scale with the same zero-capital operating discipline:
-            </p>
-
-            <div className="space-y-3 text-xs text-zinc-300">
-              <div className="p-3 rounded bg-zinc-950 border border-purple-900/30">
-                <span className="font-semibold text-purple-300 block mb-0.5">Scale Vector 1: Programmatic Reactivation Sprints</span>
-                <p className="text-zinc-400 text-[11px]">
-                  Sign 5 new high-ticket contractors per week (HVAC, cosmetic dentists, luxury remodeling). At $3,000 average rev-share yield per sprint, 5 active clients generates $15,000/month recurring contingency cash.
-                </p>
-              </div>
-
-              <div className="p-3 rounded bg-zinc-950 border border-purple-900/30">
-                <span className="font-semibold text-purple-300 block mb-0.5">Scale Vector 2: Autonomous DNS Vulnerability Scanner</span>
-                <p className="text-zinc-400 text-[11px]">
-                  Automate the live auditor to inspect 200 B2B domains daily via headless crawler, sending customized loom/PDF reports to founders. Yields 3-5 fixes/week = $1,050 - $1,750/wk instant bounty revenue.
-                </p>
-              </div>
-
-              <div className="p-3 rounded bg-zinc-950 border border-purple-900/30">
-                <span className="font-semibold text-purple-300 block mb-0.5">Scale Vector 3: Micro-Sponsorship Syndicate</span>
-                <p className="text-zinc-400 text-[11px]">
-                  Aggregate a portfolio of 20 niche technical newsletters into a single vertical ad network (total reach 60,000 developers/executives). Sell $15,000 multi-channel monthly bundles with 30% take rate ($4,500/mo).
-                </p>
-              </div>
-            </div>
+        <section className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-6">
+          <div className="mb-2 flex items-center gap-2 font-mono text-xs font-semibold uppercase text-purple-400">
+            <Layers className="h-4 w-4" />
+            Customer examples and outcomes
           </div>
-
-          <div className="mt-6 pt-4 border-t border-zinc-800 flex items-center justify-between">
-            <span className="text-xs text-zinc-400">Zero employee overhead</span>
-            <button
-              onClick={onOpenAdvisor}
-              className="text-xs text-purple-400 hover:text-purple-300 font-medium inline-flex items-center gap-1 cursor-pointer"
-            >
-              Launch Custom AI Strategy Advisor <ArrowRight className="w-3.5 h-3.5" />
-            </button>
+          <h3 className="mb-3 text-lg font-bold text-white">No verified case studies are presented here</h3>
+          <p className="text-xs leading-relaxed text-zinc-300">
+            Previously displayed named-business scenarios were illustrative development examples, not verified customers, engagements, lead counts, contracts, invoices, or results. No scenario or projected amount should be read as proof of a business relationship or expected return. The current receipt figure above is the app-recorded gross total from verified payment records.
+          </p>
+          <div className="mt-4 rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-xs leading-relaxed text-zinc-400">
+            If you use a planning model, replace its assumptions with sourced inputs and keep the assumptions separate from observed results.
           </div>
-        </div>
+        </section>
+
+        <section className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-6">
+          <div className="mb-2 flex items-center gap-2 font-mono text-xs font-semibold uppercase text-amber-400">
+            <ShieldCheck className="h-4 w-4" />
+            Before enabling customer-facing work
+          </div>
+          <h3 className="mb-3 text-lg font-bold text-white">Use evidence, authorization, and clear terms</h3>
+          <ul className="space-y-2.5 text-xs leading-relaxed text-zinc-300">
+            <li>Confirm the target, data source, and permission to use any contact or customer information.</li>
+            <li>Describe only observed facts; do not infer lost sales, inbox placement, customer intent, or guaranteed outcomes.</li>
+            <li>Agree to scope, price, responsibilities, and timing in writing before performing paid work.</li>
+            <li>Let the customer decide whether to complete Stripe Checkout; a request is not a receipt.</li>
+            <li>Reconcile processor fees, refunds, disputes, taxes, and any bank payout separately.</li>
+          </ul>
+        </section>
       </div>
 
-      {/* Comparison: Why Conventional Side Hustles Fail vs The 4 Asymmetry Vectors */}
-      <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-6 md:p-8">
-        <h3 className="text-xl font-bold text-white mb-2">
-          Structural Comparison: The Conventional Trap vs. The Asymmetry Engine
-        </h3>
-        <p className="text-xs text-zinc-400 mb-6">
-          Why 98% of people starting with $0 fail vs why these 4 vectors create cash immediately.
+      <section className="rounded-2xl border border-zinc-800 bg-zinc-950 p-6 md:p-8">
+        <h3 className="mb-2 text-xl font-bold text-white">What each status does—and does not—prove</h3>
+        <p className="mb-5 text-xs text-zinc-400">
+          The dashboard reflects stored records. Production scheduler activity must be verified separately in deployment logs and protected operational status.
         </p>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse font-mono">
-            <thead>
-              <tr className="border-b border-zinc-800 text-zinc-400">
-                <th className="py-3 px-4">Opportunity Model</th>
-                <th className="py-3 px-4">Starting Capital</th>
-                <th className="py-3 px-4">Time to $1st Dollar</th>
-                <th className="py-3 px-4">Gross Deal Value</th>
-                <th className="py-3 px-4">Why Most People Fail</th>
-                <th className="py-3 px-4">Our Mathematical Edge</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-800/60">
-              <tr className="bg-red-950/10 text-zinc-300">
-                <td className="py-3.5 px-4 font-semibold text-red-300 flex items-center gap-1.5">
-                  <XCircle className="w-4 h-4 text-red-400" />
-                  Print on Demand / Dropshipping
-                </td>
-                <td className="py-3.5 px-4 text-zinc-400">$0 to $500</td>
-                <td className="py-3.5 px-4 text-zinc-400">30-90 Days</td>
-                <td className="py-3.5 px-4 text-zinc-400">$5 - $15 profit</td>
-                <td className="py-3.5 px-4 text-zinc-400">Requires expensive Meta/TikTok ads; 2% margin.</td>
-                <td className="py-3.5 px-4 text-red-400 font-semibold">Rejected (Negative Expected Value)</td>
-              </tr>
-
-              <tr className="bg-red-950/10 text-zinc-300">
-                <td className="py-3.5 px-4 font-semibold text-red-300 flex items-center gap-1.5">
-                  <XCircle className="w-4 h-4 text-red-400" />
-                  Generic AI Content / Blog Sites
-                </td>
-                <td className="py-3.5 px-4 text-zinc-400">$0</td>
-                <td className="py-3.5 px-4 text-zinc-400">6-12 Months</td>
-                <td className="py-3.5 px-4 text-zinc-400">$0.50 - $50/mo</td>
-                <td className="py-3.5 px-4 text-zinc-400">Google HCU algorithm updates de-index AI spam.</td>
-                <td className="py-3.5 px-4 text-red-400 font-semibold">Rejected (Extreme lag time)</td>
-              </tr>
-
-              <tr className="bg-emerald-950/20 text-zinc-200">
-                <td className="py-3.5 px-4 font-semibold text-emerald-300 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                  Ghost Pipeline Revival
-                </td>
-                <td className="py-3.5 px-4 text-emerald-400 font-bold">$0.00</td>
-                <td className="py-3.5 px-4 text-emerald-400 font-bold">24 - 72 Hours</td>
-                <td className="py-3.5 px-4 text-emerald-400 font-bold">$1,500 - $8,000</td>
-                <td className="py-3.5 px-4 text-zinc-300">People don't realize contractors have dead lists.</td>
-                <td className="py-3.5 px-4 text-emerald-400 font-bold">25% pure rev-share; 0% client risk.</td>
-              </tr>
-
-              <tr className="bg-emerald-950/20 text-zinc-200">
-                <td className="py-3.5 px-4 font-semibold text-emerald-300 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                  Deliverability &amp; Webhook Bounty
-                </td>
-                <td className="py-3.5 px-4 text-emerald-400 font-bold">$0.00</td>
-                <td className="py-3.5 px-4 text-emerald-400 font-bold">12 - 24 Hours</td>
-                <td className="py-3.5 px-4 text-emerald-400 font-bold">$300 - $750</td>
-                <td className="py-3.5 px-4 text-zinc-300">Nobody pitches technical proof of lost inquiries.</td>
-                <td className="py-3.5 px-4 text-emerald-400 font-bold">15-min fix; 100% margin on DNS patch.</td>
-              </tr>
-
-              <tr className="bg-emerald-950/20 text-zinc-200">
-                <td className="py-3.5 px-4 font-semibold text-emerald-300 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                  Micro-Sponsorship Brokerage
-                </td>
-                <td className="py-3.5 px-4 text-emerald-400 font-bold">$0.00</td>
-                <td className="py-3.5 px-4 text-emerald-400 font-bold">48 - 96 Hours</td>
-                <td className="py-3.5 px-4 text-emerald-400 font-bold">$800 - $3,500</td>
-                <td className="py-3.5 px-4 text-zinc-300">Creators hate selling; B2B SaaS hates cold ads.</td>
-                <td className="py-3.5 px-4 text-emerald-400 font-bold">30% broker cut paid by sponsor escrow.</td>
-              </tr>
-            </tbody>
-          </table>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <StatusCard title="Dashboard loaded" detail="The web page responded; this alone does not prove a scheduled cycle ran." />
+          <StatusCard title="Opportunity or audit saved" detail="A stored record or public DNS observation; not a customer, contract, or identified revenue loss." />
+          <StatusCard title="Checkout link created" detail="A payment request. No charge occurs unless the customer chooses to pay." />
+          <StatusCard title="Verified live receipt" detail="A provider-confirmed gross customer payment; not net proceeds, an available balance, or a bank payout." />
         </div>
-      </div>
+      </section>
 
-      {/* Interactive Quick Launch Callouts */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div 
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <QuickLink
+          icon={<Activity className="h-5 w-5" />}
+          tone="emerald"
+          badge="TECHNICAL CHECK"
+          title="Review public DNS signals"
+          description="Inspect published email-authentication records. Results do not establish inbox delivery or financial impact."
           onClick={onOpenScanner}
-          className="p-5 rounded-xl border border-zinc-800 bg-zinc-900/40 hover:bg-zinc-900/80 hover:border-emerald-500/40 transition cursor-pointer group"
-        >
-          <div className="flex items-center justify-between mb-3">
-            <span className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400">
-              <Activity className="w-5 h-5" />
-            </span>
-            <span className="text-[10px] font-mono text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full">
-              LIVE TOOL
-            </span>
-          </div>
-          <h4 className="text-sm font-bold text-white group-hover:text-emerald-300 transition">
-            Launch Technical DNS Scanner
-          </h4>
-          <p className="text-xs text-zinc-400 mt-1">
-            Input any domain, verify DMARC/SPF authentication, and generate a $350 bounty proposal.
-          </p>
-        </div>
-
-        <div 
+        />
+        <QuickLink
+          icon={<Layers className="h-5 w-5" />}
+          tone="cyan"
+          badge="RECORDED DATA"
+          title="Review opportunities"
+          description="See stored records and estimates; confirm all customer, contract, and value details independently."
           onClick={() => onNavigateTab("pipeline")}
-          className="p-5 rounded-xl border border-zinc-800 bg-zinc-900/40 hover:bg-zinc-900/80 hover:border-cyan-500/40 transition cursor-pointer group"
-        >
-          <div className="flex items-center justify-between mb-3">
-            <span className="p-2 rounded-lg bg-cyan-500/10 text-cyan-400">
-              <Layers className="w-5 h-5" />
-            </span>
-            <span className="text-[10px] font-mono text-cyan-400 border border-cyan-500/30 px-2 py-0.5 rounded-full">
-              INTERACTIVE CRM
-            </span>
-          </div>
-          <h4 className="text-sm font-bold text-white group-hover:text-cyan-300 transition">
-            Explore Active Deal Pipeline
-          </h4>
-          <p className="text-xs text-zinc-400 mt-1">
-            Track deals through outreach, contract signing, execution, invoicing, and revenue collection.
-          </p>
-        </div>
-
-        <div 
+        />
+        <QuickLink
+          icon={<Sparkles className="h-5 w-5" />}
+          tone="purple"
+          badge="DRAFT ONLY"
+          title="Build a research worksheet"
+          description="Create a starting point for research. The draft does not browse, verify a market, or predict revenue."
           onClick={onOpenAdvisor}
-          className="p-5 rounded-xl border border-zinc-800 bg-zinc-900/40 hover:bg-zinc-900/80 hover:border-purple-500/40 transition cursor-pointer group"
-        >
-          <div className="flex items-center justify-between mb-3">
-            <span className="p-2 rounded-lg bg-purple-500/10 text-purple-400">
-              <Sparkles className="w-5 h-5" />
-            </span>
-            <span className="text-[10px] font-mono text-purple-400 border border-purple-500/30 px-2 py-0.5 rounded-full">
-              AI ENGINE
-            </span>
-          </div>
-          <h4 className="text-sm font-bold text-white group-hover:text-purple-300 transition">
-            Generate Custom Strategy
-          </h4>
-          <p className="text-xs text-zinc-400 mt-1">
-            Pick any industry or city to generate an instant zero-capital action plan with pitch scripts.
-          </p>
-        </div>
+        />
       </div>
     </div>
+  );
+}
+
+function MetricCard({
+  label,
+  value,
+  caption,
+  tone,
+}: {
+  label: string;
+  value: string;
+  caption: string;
+  tone: "emerald" | "cyan" | "purple" | "amber";
+}) {
+  const toneClasses = {
+    emerald: "text-emerald-400",
+    cyan: "text-cyan-400",
+    purple: "text-purple-400",
+    amber: "text-amber-300",
+  };
+
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900/80 p-4">
+      <span className="block font-mono text-xs text-zinc-400">{label}</span>
+      <span className={`mt-1 block font-mono text-xl font-black ${toneClasses[tone]}`}>{value}</span>
+      <span className="mt-1 block text-[11px] leading-relaxed text-zinc-500">{caption}</span>
+    </div>
+  );
+}
+
+function StatusCard({ title, detail }: { title: string; detail: string }) {
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4">
+      <h4 className="text-sm font-semibold text-white">{title}</h4>
+      <p className="mt-1 text-xs leading-relaxed text-zinc-400">{detail}</p>
+    </div>
+  );
+}
+
+function QuickLink({
+  icon,
+  tone,
+  badge,
+  title,
+  description,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  tone: "emerald" | "cyan" | "purple";
+  badge: string;
+  title: string;
+  description: string;
+  onClick: () => void;
+}) {
+  const toneClasses = {
+    emerald: "text-emerald-400 border-emerald-500/30 bg-emerald-500/10",
+    cyan: "text-cyan-400 border-cyan-500/30 bg-cyan-500/10",
+    purple: "text-purple-400 border-purple-500/30 bg-purple-500/10",
+  };
+  const theme = toneClasses[tone];
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group rounded-xl border border-zinc-800 bg-zinc-900/40 p-5 text-left transition hover:border-zinc-700 hover:bg-zinc-900/80"
+    >
+      <div className="mb-3 flex items-center justify-between">
+        <span className={`rounded-lg border p-2 ${theme}`}>{icon}</span>
+        <span className={`rounded-full border px-2 py-0.5 font-mono text-[10px] ${theme}`}>{badge}</span>
+      </div>
+      <h4 className="text-sm font-bold text-white transition group-hover:text-zinc-100">{title}</h4>
+      <p className="mt-1 text-xs leading-relaxed text-zinc-400">{description}</p>
+    </button>
   );
 }

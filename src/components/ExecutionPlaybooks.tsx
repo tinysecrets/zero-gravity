@@ -2,22 +2,7 @@
 
 import React, { useState } from "react";
 import { Playbook } from "@/types";
-import { 
-  BookOpen, 
-  CheckCircle, 
-  Copy, 
-  Check, 
-  FileText, 
-  ShieldCheck, 
-  Clock, 
-  DollarSign, 
-  Layers, 
-  ArrowRight,
-  ExternalLink,
-  ChevronDown,
-  ChevronUp,
-  Cpu
-} from "lucide-react";
+import { ArrowRight, BookOpen, Check, Copy, Cpu, Layers } from "lucide-react";
 import { SEED_PLAYBOOKS } from "@/lib/seed-data";
 
 interface ExecutionPlaybooksProps {
@@ -52,14 +37,19 @@ export function ExecutionPlaybooks({ onApplyPlaybookToDeal }: ExecutionPlaybooks
       <div>
         <h2 className="text-xl font-bold text-white flex items-center gap-2">
           <BookOpen className="w-5 h-5 text-emerald-400" />
-          Execution SOPs, Scripts &amp; Contingency Contracts
+          Planning Templates and Draft Checklists
         </h2>
         <p className="text-xs text-zinc-400 mt-0.5">
-          Battle-tested standard operating procedures with 100% free tool execution workflows.
+          Illustrative planning material only. It is not market research, a customer case study, legal advice, or a forecast; verify facts, permissions, costs, and requirements before use.
         </p>
       </div>
 
-      {/* Vector Playbook Tabs */}
+      {/* Planning template notice */}
+      <div className="rounded-xl border border-amber-800/70 bg-amber-950/20 p-4 text-xs leading-relaxed text-amber-100/90">
+        These templates do not establish a real customer, opportunity, market rate, likely result, or zero-cost workflow. Any amount or timing shown as “Not estimated” has not been independently validated. Obtain the needed authority and have terms reviewed before use.
+      </div>
+
+      {/* Planning template tabs */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {SEED_PLAYBOOKS.map((pb, idx) => {
           const isSelected = selectedPlaybookIndex === idx;
@@ -88,7 +78,7 @@ export function ExecutionPlaybooks({ onApplyPlaybookToDeal }: ExecutionPlaybooks
               </div>
 
               <div className="mt-4 pt-2 border-t border-zinc-800/80 flex items-center justify-between text-[11px] font-mono">
-                <span className="text-zinc-500">Yield:</span>
+                <span className="text-zinc-500">Estimate:</span>
                 <span className="text-emerald-400 font-bold">{pb.avgDealSize}</span>
               </div>
             </button>
@@ -105,7 +95,7 @@ export function ExecutionPlaybooks({ onApplyPlaybookToDeal }: ExecutionPlaybooks
               <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-mono">
                 {playbook.vector.replace(/_/g, " ").toUpperCase()}
               </span>
-              <span className="text-xs text-zinc-500 font-mono">Capital Required: $0.00</span>
+              <span className="text-xs text-zinc-500 font-mono">Capital: {playbook.capitalRequired}</span>
             </div>
             <h3 className="text-xl md:text-2xl font-bold text-white">{playbook.title}</h3>
             <p className="text-xs text-zinc-300 mt-1 max-w-3xl leading-relaxed">{playbook.tagline}</p>
@@ -115,7 +105,7 @@ export function ExecutionPlaybooks({ onApplyPlaybookToDeal }: ExecutionPlaybooks
             onClick={() => onApplyPlaybookToDeal(playbook.vector)}
             className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-mono text-xs font-semibold shadow transition cursor-pointer flex items-center gap-2 whitespace-nowrap"
           >
-            <span>+ Deploy This Deal</span>
+            <span>Open opportunity form</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </div>
@@ -123,12 +113,12 @@ export function ExecutionPlaybooks({ onApplyPlaybookToDeal }: ExecutionPlaybooks
         {/* Core Specs Grid */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs font-mono">
           <div className="p-3.5 rounded-xl bg-zinc-900/60 border border-zinc-800">
-            <span className="text-zinc-500 text-[10px] block uppercase">Time to 1st Dollar</span>
+            <span className="text-zinc-500 text-[10px] block uppercase">Time to first payment</span>
             <span className="text-sm font-bold text-white mt-0.5 block">{playbook.avgTimeToFirstDollar}</span>
           </div>
 
           <div className="p-3.5 rounded-xl bg-zinc-900/60 border border-zinc-800">
-            <span className="text-zinc-500 text-[10px] block uppercase">Average Deal Size</span>
+            <span className="text-zinc-500 text-[10px] block uppercase">Deal amount estimate</span>
             <span className="text-sm font-bold text-emerald-400 mt-0.5 block">{playbook.avgDealSize}</span>
           </div>
 
@@ -138,9 +128,9 @@ export function ExecutionPlaybooks({ onApplyPlaybookToDeal }: ExecutionPlaybooks
           </div>
 
           <div className="p-3.5 rounded-xl bg-zinc-900/60 border border-zinc-800">
-            <span className="text-zinc-500 text-[10px] block uppercase">Free Software Stack</span>
+            <span className="text-zinc-500 text-[10px] block uppercase">Tools / access</span>
             <span className="text-sm font-bold text-purple-400 mt-0.5 block truncate" title={playbook.freeToolsUsed}>
-              100% Free Tier Tools
+              Verify access and cost
             </span>
           </div>
         </div>
@@ -149,7 +139,7 @@ export function ExecutionPlaybooks({ onApplyPlaybookToDeal }: ExecutionPlaybooks
         <div className="p-5 rounded-xl bg-zinc-900/40 border border-zinc-800 space-y-2">
           <h4 className="text-xs font-mono font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
             <Cpu className="w-4 h-4" />
-            Underlying Economic Asymmetry
+            Planning consideration
           </h4>
           <p className="text-xs text-zinc-300 leading-relaxed font-sans">{playbook.coreMechanism}</p>
         </div>
@@ -158,7 +148,7 @@ export function ExecutionPlaybooks({ onApplyPlaybookToDeal }: ExecutionPlaybooks
         <div className="space-y-4">
           <h4 className="text-xs font-mono font-bold text-zinc-300 uppercase tracking-wider flex items-center gap-2">
             <Layers className="w-4 h-4 text-cyan-400" />
-            Standard Operating Procedure (Step-by-Step Execution)
+            Draft checklist — verify before use
           </h4>
 
           <div className="space-y-2.5">
@@ -182,7 +172,7 @@ export function ExecutionPlaybooks({ onApplyPlaybookToDeal }: ExecutionPlaybooks
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-xs font-mono font-bold text-zinc-300">
-                1. Irresistible Cold Pitch
+                1. Outreach draft (review before use)
               </span>
               <button
                 onClick={() => copyText(playbook.scriptsAndTemplates.coldPitch, "pitch")}
@@ -204,7 +194,7 @@ export function ExecutionPlaybooks({ onApplyPlaybookToDeal }: ExecutionPlaybooks
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-xs font-mono font-bold text-zinc-300">
-                2. Legal Contingency Agreement
+                2. Scope and fee draft (not legal advice)
               </span>
               <button
                 onClick={() => copyText(playbook.scriptsAndTemplates.contingencyAgreement, "agreement")}
@@ -226,7 +216,7 @@ export function ExecutionPlaybooks({ onApplyPlaybookToDeal }: ExecutionPlaybooks
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-xs font-mono font-bold text-zinc-300">
-                3. Delivery Protocol
+                3. Delivery and evidence log
               </span>
               <button
                 onClick={() => copyText(playbook.scriptsAndTemplates.deliveryTemplate, "delivery")}
@@ -248,11 +238,11 @@ export function ExecutionPlaybooks({ onApplyPlaybookToDeal }: ExecutionPlaybooks
         {/* Free Tools Breakdown */}
         <div className="p-4 rounded-xl bg-zinc-900/60 border border-zinc-800 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
           <div>
-            <span className="text-zinc-500 font-mono block text-[10px] uppercase">100% Free Software Stack Required</span>
+            <span className="text-zinc-500 font-mono block text-[10px] uppercase">Tools and access to evaluate</span>
             <span className="text-zinc-300 font-mono font-semibold">{playbook.freeToolsUsed}</span>
           </div>
           <div className="text-emerald-400 font-mono font-bold text-right">
-            Out-of-Pocket Cost: $0.00
+            Cost depends on scope and selected services
           </div>
         </div>
       </div>

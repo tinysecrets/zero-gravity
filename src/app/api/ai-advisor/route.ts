@@ -2,47 +2,40 @@ import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
+function cleanInput(value: unknown, fallback: string): string {
+  if (typeof value !== "string") return fallback;
+  const cleaned = value.trim().replace(/[\r\n\t]+/g, " ").slice(0, 120);
+  return cleaned || fallback;
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { niche, location, targetModel, skillFocus } = body;
+    const niche = cleanInput(body.niche, "a service industry");
+    const location = cleanInput(body.location, "a location to be selected");
 
-    const cleanNiche = niche || "Commercial Solar Installation";
-    const cleanLocation = location || "National / Remote";
-
-    // Generate dynamic tailor-made strategy
-    const generatedStrategy = {
-      title: `${cleanNiche} $0-Capital Asymmetry Attack Vector`,
-      targetProfile: `High-volume operators in ${cleanNiche} located in ${cleanLocation} with 20+ public reviews and active lead-gen ads.`,
-      asymmetryDiscovery: `Operators in ${cleanNiche} spend between $180 - $450 per acquisition lead. Over the preceding 12-18 months, their CRM accumulates 400 to 2,500 qualified prospects who requested quotes but did not convert. These leads represent roughly $80,000 to $350,000 in unharvested pipeline value that the owner currently writes off as $0.`,
-      purePerformanceProposition: `Offer a zero-risk revival sprint: 'We re-engage your inactive leads over 72 hours at $0 cost to you. You keep 80%, we take a 20% performance fee only when a client signs and pays you.'`,
-      financialProjections: {
-        typicalListSize: "850 dormant leads",
-        expectedReplyRate: "3.2% (~27 warm responses)",
-        qualifiedEstimatesBooked: "8 to 12 booked consultations",
-        closedDeals: "2 to 4 completed contracts",
-        averageDealValue: "$6,500 - $14,000",
-        grossRevenueGenerated: "$19,500 - $42,000",
-        operatorNetCommission: "$3,900 - $8,400 (at 20% contingency)",
-        capitalRequired: "$0.00",
-        fulfillmentTime: "3 to 5 hours",
-      },
+    // This endpoint creates a generic worksheet only. It does not browse, query
+    // market data, identify prospects, or calculate revenue assumptions.
+    const strategy = {
+      title: `Research worksheet: ${niche}`,
+      targetProfile: `Proposed research scope: learn whether a specific, authorized ${niche} business in ${location} has a documented need. No business or prospect has been searched for or verified.`,
+      researchQuestion: `What primary evidence would show that an identified ${niche} business in ${location} has a current need, is authorized to discuss it, and has agreed to the proposed scope? Public information alone may not answer these questions.`,
+      offerBoundary: "Do not quote a result, fee, savings amount, conversion rate, or delivery time until evidence, scope, costs, and responsibilities are reviewed with the customer. Any payment is voluntary and depends on the customer's agreement and completed payment.",
       actionSteps: [
-        `Step 1: Scrape / compile 15 top ${cleanNiche} businesses in ${cleanLocation} using Google Maps and LinkedIn.`,
-        "Step 2: Send the 3-sentence 'Found Money' outreach script to the Founder / Operations Director.",
-        "Step 3: Once they respond, countersign the standard 1-page Contingency Agreement.",
-        "Step 4: Receive export of older unconverted leads (CSV).",
-        "Step 5: Run the 3-touch high-converting SMS/Email sequence via Make.com or client's own CRM tool.",
-        "Step 6: Route all positive replies to client's scheduling link.",
-        "Step 7: Issue invoice for 20% fee upon client closing sales.",
+        "Identify a real organization from a reliable source and confirm that the intended contact is authorized to discuss the matter.",
+        "Collect primary evidence for the specific need; distinguish observed facts from assumptions and record source dates.",
+        "Confirm data rights, privacy requirements, and permission before using personal, CRM, or customer information.",
+        "Prepare a draft scope that lists deliverables, exclusions, dependencies, approval steps, costs, and an evidence-based schedule.",
+        "Have the customer review the scope, price, and terms in writing. Do not start work or create an invoice based only on this worksheet.",
+        "If the customer accepts, use the approved payment method. Count a receipt only after a verified live settlement; reconcile fees, refunds, disputes, and payouts separately.",
       ],
-      customOutreachScript: `Subject: Quick question regarding older ${cleanNiche} inquiries\n\nHi {{OwnerName}},\n\nI noticed your team handles substantial volume in ${cleanLocation}. You've likely invested tens of thousands into advertising over the last year.\n\nWhat is your team currently doing with the 500-1,500 past leads who inquired but didn't end up moving forward?\n\nMost ${cleanNiche} companies leave $30k-$75k on the table in dormant inquiries. We run a 3-day reactivation sprint that books 5-10 qualified estimates directly into your calendar with zero ad spend.\n\nWe work on 100% contingency: we take a 20% fee only AFTER you collect revenue. If you make $0, it costs you $0.\n\nAre you open to reviewing the 3-message sequence we use?`,
-      contingencyClause: `CONTINGENCY CLAUSE: Client agrees to remit 20% of gross collected revenue from any customer whose contact information was included in the provided inactive lead registry and who executes a signed agreement within sixty (60) days of campaign deployment. Consultant warrants $0 upfront fee and zero recurring subscription charges.`,
+      customOutreachScript: `Subject: Question about {{verified_topic}}\n\nHi {{Name}},\n\nI am researching whether {{Business}} has a current need related to {{verified_topic}}. I have not reviewed your internal records and do not want to assume a problem or result.\n\nIf this is relevant, would you be open to a brief conversation about the evidence, scope, and any applicable requirements? If not, let me know and I will stop contacting you about this.\n\n{{SenderName}}\n{{BusinessAddress}}\n{{OptOutInstructions}}`,
+      scopeChecklist: "DISCUSSION CHECKLIST — NOT A CONTRACT OR LEGAL ADVICE\n\nCustomer and authorized representative: [Verify]\nObserved need and evidence source/date: [Document]\nScope and deliverables: [Specify]\nExclusions, dependencies, and acceptance criteria: [Specify]\nCustomer data and permissions: [Document lawful basis, access, retention, and deletion]\nFee, expenses, taxes, payment trigger, and refund terms: [Agree in writing]\nSchedule and customer approvals: [Set from verified constraints]\nTermination, liability, and dispute process: [Have qualified counsel review]\n\nNo customer, engagement, price, result, or payment is implied by this worksheet.",
     };
 
-    return NextResponse.json({ success: true, strategy: generatedStrategy });
+    return NextResponse.json({ success: true, strategy });
   } catch (error) {
-    console.error("AI Advisor generation error:", error);
-    return NextResponse.json({ success: false, error: "Advisor generation failed" }, { status: 500 });
+    console.error("Strategy worksheet generation error:", error);
+    return NextResponse.json({ success: false, error: "Could not create planning draft." }, { status: 500 });
   }
 }
