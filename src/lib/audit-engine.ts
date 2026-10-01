@@ -57,7 +57,7 @@ export async function runDomainAudit(domainInput: string, nicheInput?: string): 
   let score = 100;
   if (!dmarcPresent) {
     score -= 35;
-    findings.push({ category: "Deliverability", severity: "Critical", title: "DMARC record not found",
+    findings.push({ category: "Deliverability", severity: "Warning", title: "DMARC record not found",
       description: "The public DNS response did not contain a DMARC policy record.", impact: "Email authentication and spoofing protection need review; inbox placement cannot be inferred from DNS alone." });
   } else if (dmarcPolicy === "none") {
     score -= 20;
@@ -69,7 +69,7 @@ export async function runDomainAudit(domainInput: string, nicheInput?: string): 
   }
   if (!spfPresent) {
     score -= 30;
-    findings.push({ category: "Deliverability", severity: "Critical", title: "SPF record not found",
+    findings.push({ category: "Deliverability", severity: "Warning", title: "SPF record not found",
       description: "The public DNS response did not contain an SPF record.", impact: "Authorized mail senders need review before any DNS changes." });
   } else {
     findings.push({ category: "Deliverability", severity: "Passed", title: "SPF record present",
@@ -82,13 +82,14 @@ export async function runDomainAudit(domainInput: string, nicheInput?: string): 
   }
   score = Math.max(25, score);
   const grade: AuditResult["grade"] = score >= 90 ? "A" : score >= 80 ? "B" : score >= 65 ? "C" : score >= 50 ? "D" : "F";
-  const recommendedFixBounty = score < 70 ? 350 : 250;
+  // DNS observations do not establish a paid need or an appropriate fee.
+  const recommendedFixBounty = 0;
   return {
     domain, niche: nicheInput || "B2B / Local Services", score, grade, dmarcPresent, dmarcPolicy,
     spfPresent, spfRecord, mxPresent: mxRecords.length > 0, mxRecords, findings,
     estimatedMonthlyLeakage: 0, // Unknown: public DNS cannot establish a dollar loss.
     recommendedFixBounty,
     remediationSnippet: `REVIEW SPECIFICATION FOR ${domain}\n1. Confirm all authorized mail services with the domain owner.\n2. Review existing SPF before merging provider-supplied values; never publish multiple SPF records.\n3. Configure DKIM using the sending provider's instructions.\n4. Review DMARC reports and alignment before moving from monitoring to enforcement.\n5. Obtain customer approval and verify DNS propagation and real message headers.\nNo account access or configuration changes have been performed.`,
-    readyOutreachCopy: `Subject: Public email-authentication observations for ${domain}\n\nHi,\n\nI reviewed public DNS records for ${domain} and observed:\n${findings.filter((f) => f.severity !== "Passed").map((f) => `- ${f.title}: ${f.description}`).join("\n")}\n\nThese findings do not establish lost revenue or inbox placement. I offer an email-authentication review/remediation service starting at $${recommendedFixBounty}, subject to an agreed scope and your authorization.\n\nWould you like to discuss the observations?`,
+    readyOutreachCopy: `Subject: Public DNS observations for ${domain}\n\nHi,\n\nA limited public DNS check for ${domain} observed:\n${findings.map((f) => `- ${f.title}: ${f.description}`).join("\n")}\n\nThese findings do not establish lost revenue or inbox placement, and they do not determine the right fix or price for your systems. No configuration changes have been made. If this is relevant, I would be glad to discuss the scope and your requirements before proposing any work.\n\n{{SenderName}}\n{{BusinessAddress}}\n{{OptOutInstructions}}`,
   };
 }

@@ -4,9 +4,9 @@ import "./globals.css";
 import { Analytics } from "@vercel/analytics/next";
 
 export const metadata: Metadata = {
-  title: "ZERO GRAVITY | $0 → Real Revenue Autonomous Engine",
+  title: "ZERO GRAVITY | Customer Payment Operations",
   description:
-    "An AI-augmented execution platform turning $0 into real revenue by exploiting structural market asymmetries, zero-risk contingency pipelines, and free software tooling.",
+    "A workspace for recording opportunities, reviewing public DNS signals, and requesting voluntary customer payments through Stripe Checkout. Figures are not forecasts or payout balances.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

@@ -12,6 +12,8 @@ describe("observed DNS audits", () => {
     vi.stubGlobal("fetch", vi.fn().mockImplementation(async () => Response.json({ Status: 0, Answer: [] })));
     const audit = await runDomainAudit("business.test");
     expect(audit.estimatedMonthlyLeakage).toBe(0);
+    expect(audit.recommendedFixBounty).toBe(0);
+    expect(audit.readyOutreachCopy).not.toMatch(/\$\s?[\d,]+/);
     expect(audit.findings.some((f) => f.category === "Lead Capture")).toBe(false);
     expect(audit.readyOutreachCopy).not.toContain("30%");
     expect(audit.readyOutreachCopy).toContain("do not establish lost revenue");

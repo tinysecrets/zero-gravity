@@ -167,7 +167,7 @@ export function InstantPaymentModal({
                 </span>
               </h3>
               <p className="text-xs text-zinc-400">
-                Generate an invoice link. Cash is logged only after Stripe sends a signed settlement event.
+                Create a Stripe Checkout request. Gross receipts are recorded only after a signed live payment event.
               </p>
             </div>
           </div>

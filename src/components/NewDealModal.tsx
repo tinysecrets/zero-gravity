@@ -17,28 +17,28 @@ const VECTOR_DEFAULTS: Record<DealVector, {
   outreachMessage: string;
 }> = {
   lead_reactivation: {
-    potentialValue: "18000.00",
-    operatorFeePercent: "25.00",
-    contractTerms: "25% Performance-based revenue share on all closed sales from dormant list within 60 days. $0 upfront fee.",
-    outreachMessage: "Hi {{OwnerName}}, what are you currently doing with the ~1,000 inquiries from last year who never bought? We do a 3-day reactivation sprint on 100% contingency...",
+    potentialValue: "0.00",
+    operatorFeePercent: "0.00",
+    contractTerms: "Draft only. Define authorized data use, scope, evidence, fee, payment trigger, and responsibilities in writing. No outcome is guaranteed.",
+    outreachMessage: "Hi {{Name}}, I have not reviewed your customer records and do not want to assume a need. If a permission-based follow-up project is relevant, we can first discuss evidence, authority, scope, and terms. No result or timeline is promised. {{SenderName}} {{BusinessAddress}} {{OptOutInstructions}}",
   },
   technical_leak_audit: {
-    potentialValue: "350.00",
-    operatorFeePercent: "100.00",
-    contractTerms: "Fixed $350 one-time deliverability remediation bounty. 100% pass guarantee.",
-    outreachMessage: "Hi {{OwnerName}}, I ran a deliverability check on {{domain}} and noticed your DMARC authentication is missing, routing ~30% of quotes to spam...",
+    potentialValue: "0.00",
+    operatorFeePercent: "0.00",
+    contractTerms: "Draft only. Agree on the exact technical scope, access, fee, approval, testing, and rollback in writing. No deliverability or revenue result is guaranteed.",
+    outreachMessage: "Hi {{Name}}, a limited public DNS check for {{domain}} observed: {{ObservedRecords}}. Public DNS does not establish inbox placement or financial impact, and no changes have been made. Would you like to discuss a scoped review? {{SenderName}} {{BusinessAddress}} {{OptOutInstructions}}",
   },
   micro_sponsorship: {
-    potentialValue: "2800.00",
-    operatorFeePercent: "30.00",
-    contractTerms: "Non-exclusive broker representation. 30% commission withheld upon sponsor escrow clearance.",
-    outreachMessage: "Hi {{CreatorName}}, I represent B2B SaaS advertisers looking for hyper-targeted niche reach. Can we package 2-3 upcoming slots at 70/30 split?",
+    potentialValue: "0.00",
+    operatorFeePercent: "0.00",
+    contractTerms: "Draft only. Verify representation authority, audience evidence, inventory, creative approval, fee, payment responsibilities, cancellation terms, and disclosures in writing.",
+    outreachMessage: "Hi {{Name}}, are you considering sponsorship inquiries for {{PublicationName}}? I have not verified audience metrics or reserved inventory. If useful, we can discuss current evidence, permissions, and terms before making any offer. {{SenderName}} {{BusinessAddress}} {{OptOutInstructions}}",
   },
   public_micro_purchase: {
-    potentialValue: "4500.00",
-    operatorFeePercent: "30.00",
-    contractTerms: "Public Micro-Purchase Purchase Order under statutory threshold. Back-to-back delivery.",
-    outreachMessage: "Official Quotation submitted for micro-purchase solicitation #... Turnaround: 5 business days.",
+    potentialValue: "0.00",
+    operatorFeePercent: "0.00",
+    contractTerms: "Draft only. Verify the current solicitation, buyer-specific rules, vendor eligibility, scope, price, acceptance criteria, and payment terms. No award or payment is implied.",
+    outreachMessage: "Hello {{ProcurementContact}}, I am reviewing {{SolicitationOrProjectReference}} at {{OfficialNoticeURL}}. Could you confirm the current submission instructions and vendor requirements? I will follow the official communication process and make no claim of an award. {{SenderName}} {{BusinessContactInformation}}",
   },
 };
 
@@ -51,7 +51,7 @@ export function NewDealModal({ isOpen, onClose, onCreate }: NewDealModalProps) {
   const [targetContact, setTargetContact] = useState("");
   const [targetEmail, setTargetEmail] = useState("");
   const [targetPhone, setTargetPhone] = useState("");
-  const [targetNiche, setTargetNiche] = useState("Residential Roofing");
+  const [targetNiche, setTargetNiche] = useState("Unspecified");
   const [potentialValue, setPotentialValue] = useState(VECTOR_DEFAULTS.lead_reactivation.potentialValue);
   const [operatorFeePercent, setOperatorFeePercent] = useState(VECTOR_DEFAULTS.lead_reactivation.operatorFeePercent);
   const [outreachMessage, setOutreachMessage] = useState(VECTOR_DEFAULTS.lead_reactivation.outreachMessage);
@@ -66,11 +66,11 @@ export function NewDealModal({ isOpen, onClose, onCreate }: NewDealModalProps) {
     setOperatorFeePercent(def.operatorFeePercent);
     setOutreachMessage(def.outreachMessage);
     setContractTerms(def.contractTerms);
-    if (!targetNiche || targetNiche === "Residential Roofing") {
-      if (newVector === "technical_leak_audit") setTargetNiche("B2B SaaS / Financial");
-      else if (newVector === "micro_sponsorship") setTargetNiche("Developer Tools Media");
-      else if (newVector === "public_micro_purchase") setTargetNiche("Public University / City");
-      else setTargetNiche("Residential HVAC / Roofing");
+    if (!targetNiche || targetNiche === "Unspecified") {
+      if (newVector === "technical_leak_audit") setTargetNiche("Technical review — verify target");
+      else if (newVector === "micro_sponsorship") setTargetNiche("Sponsorship — verify publisher");
+      else if (newVector === "public_micro_purchase") setTargetNiche("Procurement — verify buyer");
+      else setTargetNiche("Inquiry follow-up — verify data authority");
     }
   };
 
@@ -119,8 +119,8 @@ export function NewDealModal({ isOpen, onClose, onCreate }: NewDealModalProps) {
               <Plus className="w-5 h-5" />
             </span>
             <div>
-              <h3 className="text-base font-bold text-white">Create New $0-Capital Deal</h3>
-              <p className="text-xs text-zinc-400">Initialize an opportunity into the live PostgreSQL pipeline.</p>
+              <h3 className="text-base font-bold text-white">Create Opportunity Record</h3>
+              <p className="text-xs text-zinc-400">Record a researched target or planning draft. Estimates are not revenue or confirmed customer commitments.</p>
             </div>
           </div>
 
@@ -131,9 +131,13 @@ export function NewDealModal({ isOpen, onClose, onCreate }: NewDealModalProps) {
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-6 max-h-[70vh] overflow-y-auto space-y-4 text-xs font-mono">
+          <div className="rounded-lg border border-amber-800/70 bg-amber-950/20 p-3 leading-relaxed text-amber-100/90">
+            Saving creates an opportunity record only. It does not verify a prospect, send a message, create a payment, or establish that an estimate will be earned.
+          </div>
+
           {/* Vector Selector */}
           <div>
-            <label className="block text-zinc-300 font-semibold mb-2">Select Asymmetry Vector</label>
+            <label className="block text-zinc-300 font-semibold mb-2">Select a work category</label>
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
@@ -144,7 +148,7 @@ export function NewDealModal({ isOpen, onClose, onCreate }: NewDealModalProps) {
                     : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700"
                 }`}
               >
-                1. Ghost Lead Revival (25% Rev Share)
+                1. Client-authorized inquiry follow-up
               </button>
 
               <button
@@ -156,7 +160,7 @@ export function NewDealModal({ isOpen, onClose, onCreate }: NewDealModalProps) {
                     : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700"
                 }`}
               >
-                2. Technical DNS / DMARC Bounty ($350)
+                2. Public DNS review
               </button>
 
               <button
@@ -168,7 +172,7 @@ export function NewDealModal({ isOpen, onClose, onCreate }: NewDealModalProps) {
                     : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700"
                 }`}
               >
-                3. Micro-Sponsorship Broker (30% Cut)
+                3. Sponsorship research
               </button>
 
               <button
@@ -180,7 +184,7 @@ export function NewDealModal({ isOpen, onClose, onCreate }: NewDealModalProps) {
                     : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700"
                 }`}
               >
-                4. Public Micro-Purchase RFP (Spread)
+                4. Procurement research
               </button>
             </div>
           </div>
@@ -191,7 +195,7 @@ export function NewDealModal({ isOpen, onClose, onCreate }: NewDealModalProps) {
             <input
               type="text"
               required
-              placeholder="e.g. Apex Roofing Austin - Inactive Inquiries Revival"
+              placeholder="e.g. Research draft — verify organization and scope"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500 font-sans"
@@ -260,7 +264,7 @@ export function NewDealModal({ isOpen, onClose, onCreate }: NewDealModalProps) {
           {/* Financials */}
           <div className="grid grid-cols-2 gap-3 p-3 rounded-lg bg-zinc-900 border border-zinc-800">
             <div>
-              <label className="block text-zinc-400 mb-1">Estimated Pipeline Value ($)</label>
+              <label className="block text-zinc-400 mb-1">Recorded opportunity value (estimate, not revenue) ($)</label>
               <input
                 type="number"
                 value={potentialValue}
@@ -269,7 +273,7 @@ export function NewDealModal({ isOpen, onClose, onCreate }: NewDealModalProps) {
               />
             </div>
             <div>
-              <label className="block text-zinc-400 mb-1">Operator Fee Rate (%)</label>
+              <label className="block text-zinc-400 mb-1">Proposed fee rate (not agreed) (%)</label>
               <input
                 type="number"
                 value={operatorFeePercent}
@@ -279,9 +283,9 @@ export function NewDealModal({ isOpen, onClose, onCreate }: NewDealModalProps) {
             </div>
           </div>
 
-          {/* Outreach Script */}
+          {/* Outreach draft — verify facts and permission before use */}
           <div>
-            <label className="block text-zinc-400 mb-1">Outreach Script</label>
+            <label className="block text-zinc-400 mb-1">Outreach draft — verify facts and permission before use</label>
             <textarea
               rows={4}
               value={outreachMessage}
@@ -316,7 +320,7 @@ export function NewDealModal({ isOpen, onClose, onCreate }: NewDealModalProps) {
               disabled={isSubmitting}
               className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition cursor-pointer disabled:opacity-50"
             >
-              {isSubmitting ? "Creating..." : "Create Deal"}
+              {isSubmitting ? "Creating..." : "Save opportunity record"}
             </button>
           </div>
         </form>
