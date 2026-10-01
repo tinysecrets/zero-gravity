@@ -1,19 +1,6 @@
 import { db } from "@/db";
 import { opportunities, revenueEvents, paymentRequests } from "@/db/schema";
-import { eq } from "drizzle-orm";
-
-// ---------------------------------------------------------------------------
-// Email Outreach — actually delivers the pitch to the prospect
-//
-// Uses Resend (free: 3,000 emails/month, instant API key).
-// Set RESEND_API_KEY and FROM_EMAIL in your environment.
-//
-// If Resend is not configured, sends nothing but logs the attempt
-// so the feedback loop still records it.
-// ---------------------------------------------------------------------------
-
-const RESEND_API_KEY = process.env.RESEND_API_KEY;
-const FROM_EMAIL = process.env.FROM_EMAIL || "outreach@resend.dev";
+import { and, desc, eq } from "drizzle-orm";
 
 export interface OutreachResult {
   sent: boolean;
@@ -24,192 +11,61 @@ export interface OutreachResult {
   error?: string;
 }
 
-/**
- * Send outreach email for a deal.
- *
- * Called by the autonomous engine after creating a deal and generating
- * outreach copy. If a Stripe checkout URL exists, it's included in the email.
- */
+// Invoked only after explicit autoSendOutreach opt-in. A durable claim prevents
+// parallel sends. Indeterminate sends require review rather than blind retries.
 export async function sendOutreach(dealId: number): Promise<OutreachResult> {
-  const [deal] = await db
-    .select()
-    .from(opportunities)
-    .where(eq(opportunities.id, dealId));
+  const [deal] = await db.select().from(opportunities).where(eq(opportunities.id, dealId));
+  const subject = deal?.outreachMessage?.match(/^Subject:\s*(.+)$/im)?.[1]?.trim() || "Email-authentication review";
+  const skipped = (error: string): OutreachResult => ({ sent: false, method: "skipped", recipientEmail: deal?.targetEmail || "", subject, dealId, error });
+  if (!deal?.targetEmail || !deal.outreachMessage) return skipped("A verified contact and outreach draft are required.");
+  if (deal.outreachDeliveryStatus !== "draft") return skipped(`Outreach is ${deal.outreachDeliveryStatus}; automatic resend withheld. Review delivery before retrying.`);
+  const key = process.env.RESEND_API_KEY;
+  const from = process.env.FROM_EMAIL;
+  const replyTo = process.env.OUTREACH_REPLY_TO;
+  const postalAddress = process.env.OUTREACH_POSTAL_ADDRESS;
+  if (!key || !from || !replyTo || !postalAddress) return skipped("Configure the verified sender, Resend key, reply/opt-out mailbox, and postal address.");
+  const [invoice] = await db.select().from(paymentRequests).where(and(
+    eq(paymentRequests.opportunityId, dealId), eq(paymentRequests.status, "checkout_created"),
+  )).orderBy(desc(paymentRequests.createdAt), desc(paymentRequests.id)).limit(1);
+  if (!invoice?.checkoutUrl) return skipped("A verified-mode checkout link is required before outreach.");
+  const recipient = invoice.livemode ? deal.targetEmail : process.env.OUTREACH_TEST_RECIPIENT;
+  if (!recipient) return skipped("Set OUTREACH_TEST_RECIPIENT for test-mode outreach; real prospects are never sent test invoices.");
 
-  if (!deal) {
-    return {
-      sent: false,
-      method: "skipped",
-      recipientEmail: "",
-      subject: "",
-      dealId,
-      error: "Deal not found.",
-    };
-  }
-
-  if (!deal.targetEmail) {
-    return {
-      sent: false,
-      method: "skipped",
-      recipientEmail: "",
-      subject: deal.title,
-      dealId,
-      error: "No email address on deal.",
-    };
-  }
-
-  const subject = extractSubject(deal.outreachMessage || "");
-  const checkoutUrl = await getCheckoutUrl(dealId);
-  const body = buildEmailBody(deal, checkoutUrl);
-
-  // Log the outreach attempt in the feedback loop regardless of send success
-  await db.insert(revenueEvents).values({
-    opportunityId: deal.id,
-    industry: deal.targetNiche || null,
-    offerTier: (deal as Record<string, unknown>).offerTier as string || "remediation",
-    acquisitionSource: (deal as Record<string, unknown>).acquisitionSource as string || "manual",
-    amount: deal.potentialValue || "0",
-    eventType: "outreach_sent",
-    channel: "email",
-  }).catch(() => { /* non-critical */ });
-
-  if (!RESEND_API_KEY) {
-    return {
-      sent: false,
-      method: "skipped",
-      recipientEmail: deal.targetEmail,
-      subject,
-      dealId,
-      error: "RESEND_API_KEY not configured.",
-    };
-  }
-
+  const [claimed] = await db.update(opportunities).set({
+    outreachDeliveryStatus: "sending", outreachAttemptedAt: new Date(), updatedAt: new Date(),
+  }).where(and(eq(opportunities.id, dealId), eq(opportunities.outreachDeliveryStatus, "draft"))).returning({ id: opportunities.id });
+  if (!claimed) return skipped("Another worker already claimed this email.");
+  const body = [
+    deal.outreachMessage.replace(/^Subject:.*$/m, "").trim(),
+    "", "Customer-authorized card checkout:", invoice.checkoutUrl,
+    "", "---", `From: ${from}`, postalAddress,
+    `To opt out of further offers, reply \"unsubscribe\" to ${replyTo}.`,
+  ].join("\n");
   try {
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${RESEND_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: FROM_EMAIL,
-        to: [deal.targetEmail],
-        subject,
-        text: body,
-      }),
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST", signal: AbortSignal.timeout(15_000),
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "Idempotency-Key": `outreach-${dealId}` },
+      body: JSON.stringify({ from, reply_to: replyTo, to: [recipient], subject: invoice.livemode ? subject : `[TEST] ${subject}`, text: body }),
     });
-
-    if (!res.ok) {
-      const errBody = await res.text();
-      return {
-        sent: false,
-        method: "resend",
-        recipientEmail: deal.targetEmail,
-        subject,
-        dealId,
-        error: `Resend ${res.status}: ${errBody}`,
-      };
+    if (!response.ok) {
+      // Even a provider error might follow a partial/indeterminate send. Require
+      // review, never claim this as sent revenue or silently contact them again.
+      await db.update(opportunities).set({ outreachDeliveryStatus: "needs_review", updatedAt: new Date() }).where(eq(opportunities.id, dealId));
+      return { sent: false, method: "resend", recipientEmail: recipient, subject, dealId, error: `Email provider returned ${response.status}. Delivery needs review.` };
     }
-
-    // Update deal status to outreach_sent
-    await db
-      .update(opportunities)
-      .set({ status: "outreach_sent", updatedAt: new Date() })
-      .where(eq(opportunities.id, dealId));
-
-    return {
-      sent: true,
-      method: "resend",
-      recipientEmail: deal.targetEmail,
-      subject,
-      dealId,
-    };
-  } catch (err) {
-    return {
-      sent: false,
-      method: "resend",
-      recipientEmail: deal.targetEmail,
-      subject,
-      dealId,
-      error: err instanceof Error ? err.message : "Send failed.",
-    };
-  }
-}
-
-/**
- * Send outreach for all deals in "audited" status that have an email.
- * Called by the autonomous engine after creating deals.
- */
-export async function sendPendingOutreach(): Promise<OutreachResult[]> {
-  const pendingDeals = await db
-    .select()
-    .from(opportunities)
-    .where(eq(opportunities.status, "audited"));
-
-  const results: OutreachResult[] = [];
-
-  for (const deal of pendingDeals) {
-    if (deal.targetEmail) {
-      const result = await sendOutreach(deal.id);
-      results.push(result);
-    }
-  }
-
-  return results;
-}
-
-// ---------------------------------------------------------------------------
-// Email body construction
-// ---------------------------------------------------------------------------
-
-function extractSubject(outreachMessage: string): string {
-  // Try to extract "Subject: ..." from the outreach copy
-  const subjectMatch = outreachMessage.match(/^Subject:\s*(.+)$/im);
-  if (subjectMatch) return subjectMatch[1].trim();
-
-  // Fallback
-  return "Quick question regarding your domain deliverability";
-}
-
-function buildEmailBody(deal: {
-  outreachMessage: string | null;
-  title: string;
-  potentialValue: string;
-  contractTerms: string | null;
-  targetCompany: string;
-}, checkoutUrl?: string): string {
-  const parts: string[] = [];
-
-  // The outreach script is the main body
-  if (deal.outreachMessage) {
-    // Strip the "Subject: ..." line if present
-    const body = deal.outreachMessage.replace(/^Subject:.*$/m, "").trim();
-    parts.push(body);
-  }
-
-  // Attach the Stripe checkout link if available
-  if (checkoutUrl) {
-    parts.push("");
-    parts.push("— Pay securely by card:");
-    parts.push(checkoutUrl);
-  }
-
-  // Signature
-  parts.push("");
-  parts.push("---");
-  parts.push("Sent by Zero Gravity Autonomous Revenue Engine");
-
-  return parts.join("\n");
-}
-
-async function getCheckoutUrl(dealId: number): Promise<string | undefined> {
-  try {
-    const [pr] = await db
-      .select({ url: paymentRequests.checkoutUrl })
-      .from(paymentRequests)
-      .where(eq(paymentRequests.opportunityId, dealId));
-    return pr?.url || undefined;
+    const data = await response.json() as { id?: string };
+    if (!data.id) throw new Error("Email provider did not return a receipt ID.");
+    await db.update(opportunities).set({
+      status: "outreach_sent", outreachDeliveryStatus: "sent", outreachProviderId: data.id, updatedAt: new Date(),
+    }).where(eq(opportunities.id, dealId));
+    await db.insert(revenueEvents).values({
+      opportunityId: deal.id, industry: deal.targetNiche, offerTier: deal.offerTier,
+      acquisitionSource: deal.acquisitionSource, amount: deal.potentialValue,
+      eventType: invoice.livemode ? "outreach_sent" : "test_outreach_sent", channel: "email",
+    });
+    return { sent: true, method: "resend", recipientEmail: recipient, subject, dealId };
   } catch {
-    return undefined;
+    await db.update(opportunities).set({ outreachDeliveryStatus: "needs_review", updatedAt: new Date() }).where(eq(opportunities.id, dealId));
+    return { sent: false, method: "resend", recipientEmail: recipient, subject, dealId, error: "Delivery is indeterminate. Review provider logs before manually retrying." };
   }
 }

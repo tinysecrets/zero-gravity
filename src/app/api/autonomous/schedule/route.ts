@@ -1,68 +1,54 @@
 import { NextResponse } from "next/server";
-import { ensureDbInitialized } from "@/lib/db-seed";
-import {
-  startScheduler,
-  stopScheduler,
-  getStatus,
-  ensureSchedulerRunning,
-  type SchedulerConfig,
-} from "@/lib/scheduler";
+import { startScheduler, stopScheduler, getStatus } from "@/lib/scheduler";
+import { parseCycleConfig, parseIntervalMinutes } from "@/lib/automation-config";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET() {
   try {
-    await ensureDbInitialized();
-    ensureSchedulerRunning();
-    return NextResponse.json({ success: true, scheduler: getStatus() });
+    // Reads never enable/restart the scheduler, including after Stop.
+    return NextResponse.json({ success: true, scheduler: await getStatus() });
   } catch (error) {
     console.error("Scheduler status error:", error);
-    return NextResponse.json({ success: false, error: "Failed." }, { status: 500 });
+    return NextResponse.json({ success: false, error: "Scheduler unavailable. Check DATABASE_URL and deployment configuration." }, { status: 503 });
   }
 }
 
 export async function POST(request: Request) {
+  let body: Record<string, unknown>;
+  let cycleConfig;
+  let intervalMinutes;
   try {
-    await ensureDbInitialized();
-
-    let body: Record<string, unknown> = {};
-    try { body = await request.json(); } catch { /* empty */ }
-
-    if (body.enabled === false) {
-      const status = stopScheduler();
-      return NextResponse.json({ success: true, message: "Stopped.", scheduler: status });
-    }
-
-    const config: Partial<SchedulerConfig> = {
-      enabled: true,
-      ...(body.intervalMinutes != null && { intervalMinutes: Number(body.intervalMinutes) }),
-      cycleConfig: {
-        scoreThreshold: Number(body.scoreThreshold) || 65,
-        autoCreateDeals: body.autoCreateDeals !== false,
-        autoGenerateOutreach: body.autoGenerateOutreach !== false,
-        autoCreateCheckout: Boolean(body.autoCreateCheckout),
-      },
-    };
-
-    const status = startScheduler(config);
+    body = await request.json();
+    cycleConfig = parseCycleConfig(body);
+    if (body.enabled !== undefined && typeof body.enabled !== "boolean") throw new Error("enabled must be a boolean.");
+    if (body.intervalMinutes !== undefined) intervalMinutes = parseIntervalMinutes(body.intervalMinutes);
+  } catch (error) {
+    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : "Invalid configuration." }, { status: 400 });
+  }
+  try {
+    const status = body.enabled === false ? await stopScheduler() : await startScheduler({
+      enabled: true, intervalMinutes, cycleConfig: { ...(await getStatus()).cycleConfig, ...cycleConfig },
+    });
     return NextResponse.json({
       success: true,
-      message: `Scheduler active. Running every ${status.intervalMinutes} min (${status.mode}).`,
+      message: !status.enabled ? "Scheduler paused." : status.mode === "vercel_cron"
+        ? "Enabled. Vercel Cron runs daily at 13:00 UTC; use Run Single Cycle to run now."
+        : `Enabled. Running every ${status.intervalMinutes} minutes.`,
       scheduler: status,
     });
   } catch (error) {
-    console.error("Failed to start scheduler:", error);
-    return NextResponse.json({ success: false, error: "Failed." }, { status: 500 });
+    console.error("Failed to configure scheduler:", error);
+    return NextResponse.json({ success: false, error: "Unable to save scheduler configuration." }, { status: 503 });
   }
 }
 
 export async function DELETE() {
   try {
-    const status = stopScheduler();
-    return NextResponse.json({ success: true, message: "Stopped.", scheduler: status });
+    return NextResponse.json({ success: true, message: "Scheduler paused; active cycle stop requested.", scheduler: await stopScheduler() });
   } catch (error) {
     console.error("Failed to stop scheduler:", error);
-    return NextResponse.json({ success: false, error: "Failed." }, { status: 500 });
+    return NextResponse.json({ success: false, error: "Unable to pause scheduler." }, { status: 503 });
   }
 }

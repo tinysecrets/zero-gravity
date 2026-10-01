@@ -15,19 +15,16 @@ interface PaymentStatus {
   currency: string;
   serviceDescription: string;
   paidAt: string | null;
+  livemode: boolean;
 }
 
 export function PaymentConfirmationClient({ sessionId }: PaymentConfirmationClientProps) {
   const [payment, setPayment] = useState<PaymentStatus | null>(null);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(sessionId ? "" : "The Stripe Checkout session reference is missing.");
   const [isChecking, setIsChecking] = useState(Boolean(sessionId));
 
   useEffect(() => {
-    if (!sessionId) {
-      setError("The Stripe Checkout session reference is missing.");
-      setIsChecking(false);
-      return;
-    }
+    if (!sessionId) return;
 
     let attempts = 0;
     let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -86,16 +83,18 @@ export function PaymentConfirmationClient({ sessionId }: PaymentConfirmationClie
           </>
         ) : isPaid ? (
           <>
-            <h1 className="text-2xl font-bold text-white">Payment confirmed</h1>
+            <h1 className="text-2xl font-bold text-white">{payment.livemode ? "Payment confirmed" : "Test payment confirmed"}</h1>
             <p className="mt-2 text-sm leading-relaxed text-zinc-300">
-              Stripe’s signed webhook confirmed the payment. The transaction is now posted to the verified ledger.
+              {payment.livemode
+                ? "Stripe’s signed webhook confirmed the customer payment and posted it to the verified ledger. Bank payouts are managed separately in Stripe."
+                : "Stripe confirmed a test payment. No real funds were received and no verified revenue was recorded."}
             </p>
           </>
         ) : (
           <>
             <h1 className="text-2xl font-bold text-white">Checkout received</h1>
             <p className="mt-2 text-sm leading-relaxed text-zinc-300">
-              We are waiting for Stripe’s signed settlement event before recording revenue. Do not treat this as paid until the status changes to confirmed.
+              We are waiting for Stripe’s signed payment event before recording revenue. Do not treat this as paid until the status changes to confirmed.
             </p>
           </>
         )}
@@ -104,12 +103,12 @@ export function PaymentConfirmationClient({ sessionId }: PaymentConfirmationClie
           <div className="mt-6 space-y-2 rounded-xl border border-zinc-800 bg-zinc-950 p-4 font-mono text-xs">
             <div className="flex justify-between gap-4"><span className="text-zinc-500">Reference</span><span className="text-zinc-200">{payment.referenceCode}</span></div>
             <div className="flex justify-between gap-4"><span className="text-zinc-500">Amount</span><span className="font-bold text-emerald-400">${Number(payment.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })} {payment.currency.toUpperCase()}</span></div>
-            <div className="flex justify-between gap-4"><span className="text-zinc-500">Settlement status</span><span className={isPaid ? "font-bold text-emerald-400" : "font-bold text-cyan-400"}>{payment.status.replace(/_/g, " ").toUpperCase()}</span></div>
+            <div className="flex justify-between gap-4"><span className="text-zinc-500">Payment status</span><span className={isPaid ? "font-bold text-emerald-400" : "font-bold text-cyan-400"}>{payment.status.replace(/_/g, " ").toUpperCase()}</span></div>
           </div>
         )}
 
         {isChecking && (
-          <div className="mt-5 flex items-center gap-2 text-xs text-cyan-300"><RefreshCw className="h-3.5 w-3.5 animate-spin" /> Checking signed settlement status...</div>
+          <div className="mt-5 flex items-center gap-2 text-xs text-cyan-300"><RefreshCw className="h-3.5 w-3.5 animate-spin" /> Checking signed payment status...</div>
         )}
 
         <Link href="/" className="mt-7 inline-flex items-center gap-2 rounded-lg bg-zinc-800 px-4 py-2 text-sm font-semibold text-white transition hover:bg-zinc-700">

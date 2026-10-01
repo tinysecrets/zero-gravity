@@ -22,194 +22,73 @@ export interface AuditResult {
   readyOutreachCopy: string;
 }
 
+interface DnsResponse { Status: number; Answer?: Array<{ data?: string; type?: number }> }
+
+async function lookup(name: string, type: string): Promise<DnsResponse> {
+  const query = new URLSearchParams({ name, type });
+  const response = await fetch(`https://cloudflare-dns.com/dns-query?${query}`, {
+    headers: { Accept: "application/dns-json" }, signal: AbortSignal.timeout(3500),
+  });
+  if (!response.ok) throw new Error("DNS provider is unavailable.");
+  const data = await response.json() as DnsResponse;
+  if (data.Status !== 0 && data.Status !== 3) throw new Error("DNS query could not be resolved reliably.");
+  return data;
+}
+
 export async function runDomainAudit(domainInput: string, nicheInput?: string): Promise<AuditResult> {
-  // Normalize domain
-  let domain = domainInput.trim().toLowerCase();
-  domain = domain.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
-
-  let dmarcPresent = false;
-  let dmarcPolicy = "none";
-  let spfPresent = false;
-  let spfRecord = "";
-  const mxRecords: string[] = [];
-
-  // Attempt real live DNS lookup via Cloudflare DNS-over-HTTPS
-  try {
-    const dmarcRes = await fetch(`https://cloudflare-dns.com/dns-query?name=_dmarc.${domain}&type=TXT`, {
-      headers: { Accept: "application/dns-json" },
-      signal: AbortSignal.timeout(3500),
-    });
-    if (dmarcRes.ok) {
-      const dmarcData = await dmarcRes.json();
-      if (dmarcData.Answer && dmarcData.Answer.length > 0) {
-        for (const ans of dmarcData.Answer) {
-          const val = ans.data ? ans.data.replace(/"/g, "") : "";
-          if (val.includes("v=DMARC1")) {
-            dmarcPresent = true;
-            if (val.includes("p=reject")) dmarcPolicy = "reject";
-            else if (val.includes("p=quarantine")) dmarcPolicy = "quarantine";
-            else dmarcPolicy = "none";
-            break;
-          }
-        }
-      }
-    }
-
-    const spfRes = await fetch(`https://cloudflare-dns.com/dns-query?name=${domain}&type=TXT`, {
-      headers: { Accept: "application/dns-json" },
-      signal: AbortSignal.timeout(3500),
-    });
-    if (spfRes.ok) {
-      const spfData = await spfRes.json();
-      if (spfData.Answer && spfData.Answer.length > 0) {
-        for (const ans of spfData.Answer) {
-          const val = ans.data ? ans.data.replace(/"/g, "") : "";
-          if (val.includes("v=spf1")) {
-            spfPresent = true;
-            spfRecord = val;
-            break;
-          }
-        }
-      }
-    }
-
-    const mxRes = await fetch(`https://cloudflare-dns.com/dns-query?name=${domain}&type=MX`, {
-      headers: { Accept: "application/dns-json" },
-      signal: AbortSignal.timeout(3500),
-    });
-    if (mxRes.ok) {
-      const mxData = await mxRes.json();
-      if (mxData.Answer && mxData.Answer.length > 0) {
-        for (const ans of mxData.Answer) {
-          if (ans.data) mxRecords.push(ans.data);
-        }
-      }
-    }
-  } catch (err) {
-    console.warn("DNS resolution timeout or network restriction, using heuristic modeling:", err);
+  const domain = domainInput.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+  if (!/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(domain) || domain.length > 253) {
+    throw new Error("A public domain name is required.");
   }
-
-  // Findings builder
+  // A timeout is not proof of a missing record. Do not fabricate offers from a
+  // network failure, assumed inbox placement, or untested internal webhooks.
+  const [dmarcData, spfData, mxData] = await Promise.all([
+    lookup(`_dmarc.${domain}`, "TXT"), lookup(domain, "TXT"), lookup(domain, "MX"),
+  ]);
+  if (spfData.Status === 3 && mxData.Status === 3) throw new Error("Domain does not resolve.");
+  const texts = (data: DnsResponse) => (data.Answer || []).filter((a) => a.type === 16).map((a) => (a.data || "").replace(/"/g, ""));
+  const dmarc = texts(dmarcData).find((record) => /^v=DMARC1\s*;/i.test(record)) || "";
+  const dmarcPresent = Boolean(dmarc);
+  const dmarcPolicy = dmarc.match(/(?:^|;)\s*p=(none|quarantine|reject)(?:\s*;|\s*$)/i)?.[1]?.toLowerCase() || "none";
+  const spfRecord = texts(spfData).find((record) => /^v=spf1(?:\s|$)/i.test(record)) || "";
+  const spfPresent = Boolean(spfRecord);
+  const mxRecords = (mxData.Answer || []).filter((a) => a.type === 15 && a.data).map((a) => a.data!);
   const findings: AuditResult["findings"] = [];
   let score = 100;
-
   if (!dmarcPresent) {
     score -= 35;
-    findings.push({
-      category: "Deliverability",
-      severity: "Critical",
-      title: "Missing DMARC Protection Record",
-      description: "Google & Yahoo require valid DMARC for email authentication. Without it, your sales quotes and client follow-ups frequently get routed to Spam.",
-      impact: "Estimated 25% - 40% of outbound proposals land in junk folders."
-    });
+    findings.push({ category: "Deliverability", severity: "Critical", title: "DMARC record not found",
+      description: "The public DNS response did not contain a DMARC policy record.", impact: "Email authentication and spoofing protection need review; inbox placement cannot be inferred from DNS alone." });
   } else if (dmarcPolicy === "none") {
     score -= 20;
-    findings.push({
-      category: "Deliverability",
-      severity: "Warning",
-      title: "Weak DMARC Policy (p=none)",
-      description: "Domain has DMARC configured in monitoring mode only. Mail servers do not enforce strict delivery authentication.",
-      impact: "Potential domain spoofing and reduced inbox placement rates."
-    });
+    findings.push({ category: "Security", severity: "Warning", title: "DMARC monitoring policy",
+      description: "The domain publishes p=none, a monitoring-only policy. This may be intentional during rollout.", impact: "Review reports and sender alignment before considering enforcement." });
   } else {
-    findings.push({
-      category: "Deliverability",
-      severity: "Passed",
-      title: `Strict DMARC Policy Active (p=${dmarcPolicy})`,
-      description: "Domain enforces strict email authentication policies.",
-      impact: "High reputation sender status with major ESPs."
-    });
+    findings.push({ category: "Deliverability", severity: "Passed", title: `DMARC policy: ${dmarcPolicy}`,
+      description: "A public DMARC enforcement policy was found.", impact: "Sender alignment and message delivery still require separate verification." });
   }
-
   if (!spfPresent) {
     score -= 30;
-    findings.push({
-      category: "Deliverability",
-      severity: "Critical",
-      title: "Missing SPF (Sender Policy Framework) Record",
-      description: "No SPF TXT record detected. Inbound email gateways cannot verify authorized IP senders.",
-      impact: "Immediate failure on Google & Microsoft inbox compliance filters."
-    });
+    findings.push({ category: "Deliverability", severity: "Critical", title: "SPF record not found",
+      description: "The public DNS response did not contain an SPF record.", impact: "Authorized mail senders need review before any DNS changes." });
   } else {
-    findings.push({
-      category: "Deliverability",
-      severity: "Passed",
-      title: "SPF Authentication Configured",
-      description: `SPF record identified: ${spfRecord ? spfRecord.substring(0, 45) + "..." : "Active"}`,
-      impact: "Authorized senders verified."
-    });
+    findings.push({ category: "Deliverability", severity: "Passed", title: "SPF record present",
+      description: `Published SPF: ${spfRecord}`, impact: "Record presence alone does not verify authorized senders or SPF validity." });
   }
-
-  if (mxRecords.length === 0) {
+  if (!mxRecords.length) {
     score -= 15;
-    findings.push({
-      category: "Deliverability",
-      severity: "Warning",
-      title: "No MX Record or Slow Propagation Detected",
-      description: "Domain mail exchange routing may be unoptimized or using third-party proxy.",
-      impact: "Possible delays in receiving customer responses."
-    });
+    findings.push({ category: "Deliverability", severity: "Warning", title: "MX record not found",
+      description: "The public DNS response did not contain a mail-exchange record.", impact: "Confirm whether the domain is intended to receive email before recommending changes." });
   }
-
-  // Add conversion & webhook findings
-  findings.push({
-    category: "Lead Capture",
-    severity: score < 70 ? "Critical" : "Warning",
-    title: "Lead Capture Webhook & Instant Auto-Responder Latency",
-    description: "Inbound quote inquiries lack sub-5 minute SMS/Email auto-confirmation triggers.",
-    impact: "Industry benchmarks show 78% of customers buy from the vendor who responds first."
-  });
-
-  const grade: AuditResult["grade"] =
-    score >= 90 ? "A" : score >= 80 ? "B" : score >= 65 ? "C" : score >= 50 ? "D" : "F";
-
-  const estimatedMonthlyLeakage = score < 60 ? 4800 : score < 80 ? 2400 : 750;
+  score = Math.max(25, score);
+  const grade: AuditResult["grade"] = score >= 90 ? "A" : score >= 80 ? "B" : score >= 65 ? "C" : score >= 50 ? "D" : "F";
   const recommendedFixBounty = score < 70 ? 350 : 250;
-
-  const remediationSnippet = `# FIX SPECIFICATION FOR: ${domain}
-# Step 1: Add/Update DMARC TXT Record
-Type: TXT
-Host / Name: _dmarc
-Value: v=DMARC1; p=quarantine; sp=quarantine; pct=100; rua=mailto:dmarc-reports@${domain}; aspf=r;
-
-# Step 2: Add/Update SPF TXT Record
-Type: TXT
-Host / Name: @
-Value: v=spf1 include:_spf.google.com include:sendgrid.net ~all
-
-# Step 3: Verify DKIM Alignment in Google Workspace / Microsoft 365 Admin Console`;
-
-  const readyOutreachCopy = `Subject: Deliverability flaw on ${domain} (missing DMARC alignment)
-
-Hi [Founder / VP Operations],
-
-I ran a technical deliverability diagnostic on ${domain} and discovered that your domain's DMARC authentication is currently ${dmarcPresent ? (dmarcPolicy === 'none' ? 'unprotected (p=none)' : 'misaligned') : 'completely missing'}.
-
-Under Google and Yahoo's email sender enforcement, this causes ~30% of your sales proposals and customer estimates to get filtered straight into Spam/Junk folders without your team knowing.
-
-I have already generated the exact DNS TXT patch required to fix this:
-- DMARC Policy: v=DMARC1; p=quarantine; rua=mailto:dmarc@${domain}
-- SPF Alignment verification
-
-I can implement and verify this on your DNS (Cloudflare, GoDaddy, Namecheap) in 15 minutes today for a flat $350 bounty, or provide step-by-step instructions to your IT person.
-
-Would you like me to patch this for you this afternoon?`;
-
   return {
-    domain,
-    niche: nicheInput || "B2B / Local Services",
-    score: Math.max(25, Math.min(100, score)),
-    grade,
-    dmarcPresent,
-    dmarcPolicy,
-    spfPresent,
-    spfRecord,
-    mxPresent: mxRecords.length > 0,
-    mxRecords,
-    findings,
-    estimatedMonthlyLeakage,
+    domain, niche: nicheInput || "B2B / Local Services", score, grade, dmarcPresent, dmarcPolicy,
+    spfPresent, spfRecord, mxPresent: mxRecords.length > 0, mxRecords, findings,
+    estimatedMonthlyLeakage: 0, // Unknown: public DNS cannot establish a dollar loss.
     recommendedFixBounty,
-    remediationSnippet,
-    readyOutreachCopy,
+    remediationSnippet: `REVIEW SPECIFICATION FOR ${domain}\n1. Confirm all authorized mail services with the domain owner.\n2. Review existing SPF before merging provider-supplied values; never publish multiple SPF records.\n3. Configure DKIM using the sending provider's instructions.\n4. Review DMARC reports and alignment before moving from monitoring to enforcement.\n5. Obtain customer approval and verify DNS propagation and real message headers.\nNo account access or configuration changes have been performed.`,
+    readyOutreachCopy: `Subject: Public email-authentication observations for ${domain}\n\nHi,\n\nI reviewed public DNS records for ${domain} and observed:\n${findings.filter((f) => f.severity !== "Passed").map((f) => `- ${f.title}: ${f.description}`).join("\n")}\n\nThese findings do not establish lost revenue or inbox placement. I offer an email-authentication review/remediation service starting at $${recommendedFixBounty}, subject to an agreed scope and your authorization.\n\nWould you like to discuss the observations?`,
   };
 }

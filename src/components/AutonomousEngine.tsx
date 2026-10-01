@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import type { AutomationReadiness, CycleConfig } from "@/lib/automation-config";
 import {
   Cpu,
   Play,
@@ -64,12 +65,7 @@ interface CycleState {
   status: "running" | "completed" | "failed" | "stopped";
   startedAt: string;
   completedAt?: string;
-  config: {
-    scoreThreshold: number;
-    autoCreateDeals: boolean;
-    autoGenerateOutreach: boolean;
-    autoCreateCheckout: boolean;
-  };
+  config: CycleConfig;
   steps: CycleStep[];
   summary: CycleSummary;
   error?: string;
@@ -85,12 +81,9 @@ interface SchedulerStatus {
   totalRuns: number;
   consecutiveErrors: number;
   mode: string;
-  cycleConfig: {
-    scoreThreshold: number;
-    autoCreateDeals: boolean;
-    autoGenerateOutreach: boolean;
-    autoCreateCheckout: boolean;
-  };
+  cycleConfig: CycleConfig;
+  cronSchedule: string | null;
+  readiness: AutomationReadiness;
 }
 
 interface ScanTarget {
@@ -144,12 +137,18 @@ export function AutonomousEngine() {
   const [history, setHistory] = useState<RunHistoryEntry[]>([]);
   const [feedback, setFeedback] = useState<FeedbackData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [readiness, setReadiness] = useState<AutomationReadiness | null>(null);
+  const [isLaunching, setIsLaunching] = useState(false);
+  const configLoaded = useRef(false);
 
   // Cycle config
   const [scoreThreshold, setScoreThreshold] = useState(65);
   const [autoCreateDeals, setAutoCreateDeals] = useState(true);
   const [autoGenerateOutreach, setAutoGenerateOutreach] = useState(true);
   const [autoCreateCheckout, setAutoCreateCheckout] = useState(false);
+  const [autoSendOutreach, setAutoSendOutreach] = useState(false);
+  const [maxDomainsPerCycle, setMaxDomainsPerCycle] = useState(5);
 
   // Scheduler config
   const [schedInterval, setSchedInterval] = useState(15);
@@ -175,12 +174,13 @@ export function AutonomousEngine() {
 
   const fetchAll = useCallback(async () => {
     try {
-      const [cycleRes, schedRes, targetsRes, historyRes, feedbackRes] = await Promise.all([
+      const [cycleRes, schedRes, targetsRes, historyRes, feedbackRes, healthRes] = await Promise.all([
         fetch("/api/autonomous/cycle"),
         fetch("/api/autonomous/schedule"),
         fetch("/api/autonomous/targets"),
         fetch("/api/autonomous/history"),
         fetch("/api/autonomous/feedback"),
+        fetch("/api/health"),
       ]);
 
       const cycleData = await cycleRes.json();
@@ -188,55 +188,68 @@ export function AutonomousEngine() {
       const targetsData = await targetsRes.json();
       const historyData = await historyRes.json();
       const feedbackData = await feedbackRes.json();
+      const healthData = await healthRes.json();
 
-      if (cycleData.success) setActiveCycle(cycleData.activeCycle);
-      if (schedData.success) setScheduler(schedData.scheduler);
+      if (cycleData.success) setActiveCycle((previous) => cycleData.activeCycle || (previous?.status !== "running" ? previous : null));
+      if (schedData.success) {
+        const saved: SchedulerStatus = schedData.scheduler;
+        setScheduler(saved);
+        setReadiness(saved.readiness);
+        if (!configLoaded.current) {
+          setScoreThreshold(saved.cycleConfig.scoreThreshold);
+          setAutoCreateDeals(saved.cycleConfig.autoCreateDeals);
+          setAutoGenerateOutreach(saved.cycleConfig.autoGenerateOutreach);
+          setAutoSendOutreach(saved.cycleConfig.autoSendOutreach);
+          setAutoCreateCheckout(saved.cycleConfig.autoCreateCheckout);
+          setMaxDomainsPerCycle(saved.cycleConfig.maxDomainsPerCycle);
+          setSchedInterval(saved.intervalMinutes);
+          configLoaded.current = true;
+        }
+      } else {
+        setNotice(schedData.error || "Scheduler configuration is unavailable.");
+        setReadiness(healthData.automation || null);
+      }
       if (targetsData.success) setTargets(targetsData.data);
       if (historyData.success) setHistory(historyData.data);
       if (feedbackData.success) setFeedback(feedbackData);
     } catch (err) {
       console.error("Fetch failed:", err);
+      setNotice("Unable to load engine status. Check deployment configuration.");
     } finally {
       setIsLoading(false);
     }
   }, []);
 
-  useEffect(() => { fetchAll(); }, [fetchAll]);
-
-  // Poll while running
   useEffect(() => {
-    const isRunning = activeCycle?.status === "running" || scheduler?.cycleActive;
-    if (isRunning) {
-      pollRef.current = setInterval(async () => {
-        try {
-          const res = await fetch("/api/autonomous/cycle");
-          const data = await res.json();
-          if (data.success) {
-            setActiveCycle(data.activeCycle);
-            if (data.activeCycle?.status !== "running") {
-              fetchAll();
-              if (pollRef.current) clearInterval(pollRef.current);
-            }
-          }
-        } catch { /* ignore */ }
-      }, 2000);
-    }
+    const timeout = setTimeout(() => { void fetchAll(); }, 0);
+    return () => clearTimeout(timeout);
+  }, [fetchAll]);
+
+  // Poll even between scheduled runs so cold-start/remote cron activity is visible.
+  useEffect(() => {
+    const running = activeCycle?.status === "running" || scheduler?.cycleActive || isLaunching;
+    if (!running && !scheduler?.enabled) return;
+    pollRef.current = setInterval(() => { void fetchAll(); }, running ? 2000 : 15000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [activeCycle?.status, scheduler?.cycleActive, fetchAll]);
+  }, [activeCycle?.status, scheduler?.cycleActive, scheduler?.enabled, isLaunching, fetchAll]);
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
   const handleStartCycle = async () => {
+    setIsLaunching(true);
+    setNotice(null);
     try {
       const res = await fetch("/api/autonomous/cycle", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scoreThreshold, autoCreateDeals, autoGenerateOutreach, autoCreateCheckout }),
+        body: JSON.stringify({ scoreThreshold, autoCreateDeals, autoGenerateOutreach, autoSendOutreach, autoCreateCheckout, maxDomainsPerCycle }),
       });
       const data = await res.json();
       if (data.success) setActiveCycle(data.activeCycle);
-      else alert(data.error);
-    } catch { alert("Failed."); }
+      else setNotice(data.error || "Cycle could not run.");
+      await fetchAll();
+    } catch { setNotice("Cycle request failed. Check server logs."); }
+    finally { setIsLaunching(false); }
   };
 
   const handleStopCycle = async () => {
@@ -254,21 +267,24 @@ export function AutonomousEngine() {
           scoreThreshold,
           autoCreateDeals,
           autoGenerateOutreach,
+          autoSendOutreach,
+          maxDomainsPerCycle,
           autoCreateCheckout,
         }),
       });
       const data = await res.json();
-      if (data.success) setScheduler(data.scheduler);
-      else alert(data.error);
-    } catch { alert("Failed."); }
+      if (data.success) { setScheduler(data.scheduler); setReadiness(data.scheduler.readiness); setNotice(data.message); }
+      else setNotice(data.error);
+    } catch { setNotice("Unable to save scheduler configuration."); }
   };
 
   const handleStopScheduler = async () => {
     try {
       const res = await fetch("/api/autonomous/schedule", { method: "DELETE" });
       const data = await res.json();
-      if (data.success) setScheduler(data.scheduler);
-    } catch { /* */ }
+      if (data.success) { setScheduler(data.scheduler); setNotice(data.message); }
+      else setNotice(data.error || "Pause failed.");
+    } catch { setNotice("Unable to pause the scheduler."); }
   };
 
   const handleAcquire = async (e: React.FormEvent) => {
@@ -333,7 +349,7 @@ export function AutonomousEngine() {
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
-  const isRunning = activeCycle?.status === "running" || scheduler?.cycleActive;
+  const isRunning = activeCycle?.status === "running" || scheduler?.cycleActive || isLaunching;
 
   const stepIcon = (type: string) => {
     const icons: Record<string, React.ReactNode> = {
@@ -386,9 +402,23 @@ export function AutonomousEngine() {
           Autonomous Revenue Engine
         </h2>
         <p className="text-xs text-zinc-400 mt-0.5">
-          Discovers prospects from public data, audits DNS infrastructure, decides actionability, creates deals, generates outreach, issues Stripe checkout, and records verified revenue — on a persistent schedule, without human intervention.
+          Audits reviewed prospects, drafts offers, optionally sends checkout links, and records customer-approved Stripe payments on a persistent schedule. This app does not transfer money out or make bank payouts.
         </p>
       </div>
+
+      <div className="rounded-xl border border-cyan-900/60 bg-cyan-950/20 p-4 text-xs leading-relaxed text-zinc-300">
+        Vercel Cron runs without page visits. Funds are received only when a customer completes Stripe Checkout.
+        Bank linking and payout schedules are managed in your Stripe Dashboard; payment confirmation is not proof of a bank payout.
+        {readiness?.paymentMode === "test" && <p className="mt-2 font-bold text-amber-300">Stripe test mode: no real funds or verified revenue. Email goes only to OUTREACH_TEST_RECIPIENT.</p>}
+      </div>
+      {notice && <div role="status" className="rounded-xl border border-zinc-700 bg-zinc-900 p-4 text-xs text-zinc-300">{notice}</div>}
+      {readiness && !readiness.ready && (
+        <div role="alert" className="rounded-xl border border-amber-800/60 bg-amber-950/20 p-4 text-xs text-amber-200">
+          <p className="font-bold">Setup required — automatic collection is not ready</p>
+          <ul className="mt-2 list-disc space-y-1 pl-4">{readiness.blockers.map((item) => <li key={item}>{item}</li>)}</ul>
+          <p className="mt-2 text-zinc-400">Configure secrets in Vercel environment settings, not in source code or chat. Review targets before enabling email.</p>
+        </div>
+      )}
 
       {/* ── Revenue Feedback Loop KPIs ───────────────────────────────────── */}
       {feedback && (
@@ -502,7 +532,7 @@ export function AutonomousEngine() {
             {scheduler?.enabled ? (
               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold border bg-emerald-950 text-emerald-300 border-emerald-800">
                 <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" /></span>
-                ACTIVE
+                {readiness?.ready ? "ENABLED" : "SETUP REQUIRED"}
               </span>
             ) : (
               <span className="text-[10px] font-mono text-zinc-500 px-2 py-0.5 rounded border border-zinc-800 bg-zinc-900">INACTIVE</span>
@@ -511,16 +541,17 @@ export function AutonomousEngine() {
 
           {scheduler?.enabled && (
             <div className="flex flex-wrap gap-4 text-[11px] font-mono text-zinc-400">
-              <span>Every <span className="text-purple-300 font-bold">{scheduler.intervalMinutes} min</span></span>
-              <span>Next: <span className="text-purple-300">{scheduler.nextRunAt ? new Date(scheduler.nextRunAt).toLocaleTimeString() : "now"}</span></span>
+              <span className="text-purple-300 font-bold">{scheduler.mode === "vercel_cron" ? "Daily at 13:00 UTC" : `Every ${scheduler.intervalMinutes} min`}</span>
+              <span>Next: <span className="text-purple-300">{scheduler.nextRunAt ? new Date(scheduler.nextRunAt).toLocaleString() : "now"}</span></span>
               <span>Runs: <span className="text-white font-bold">{scheduler.totalRuns}</span></span>
               <span>Mode: <span className="text-cyan-400">{scheduler.mode}</span></span>
               {scheduler.consecutiveErrors > 0 && <span className="text-red-400">{scheduler.consecutiveErrors} error(s)</span>}
             </div>
           )}
 
+          {scheduler?.mode === "vercel_cron" && <p className="text-[11px] text-zinc-400">The schedule is defined in vercel.json, not this browser. Hobby may run within the 13:00–13:59 UTC window. Enabling takes effect on the next cron invocation; use a manual cycle to run now.</p>}
           <div className="flex items-center gap-3">
-            <select
+            {scheduler?.mode !== "vercel_cron" && <select
               value={schedInterval}
               onChange={(e) => setSchedInterval(Number(e.target.value))}
               className="bg-zinc-950 border border-zinc-700 rounded-lg px-2 py-1.5 text-xs text-zinc-200 font-mono cursor-pointer"
@@ -530,14 +561,16 @@ export function AutonomousEngine() {
               <option value={15}>15 min</option>
               <option value={30}>30 min</option>
               <option value={60}>60 min</option>
-            </select>
+              <option value={1440}>Daily</option>
+            </select>}
+            {scheduler?.enabled && <button onClick={handleStartScheduler} className="rounded-lg border border-purple-700 bg-purple-950 px-3 py-2 text-xs font-mono text-purple-200 cursor-pointer">Save configuration</button>}
             {scheduler?.enabled ? (
               <button onClick={handleStopScheduler} className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white font-mono text-xs font-bold transition cursor-pointer">
-                <Square className="w-3.5 h-3.5" /> Stop
+                <Square className="w-3.5 h-3.5" /> Pause
               </button>
             ) : (
               <button onClick={handleStartScheduler} className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-mono text-xs font-bold shadow-lg transition cursor-pointer">
-                <Play className="w-3.5 h-3.5" /> Start Scheduler
+                <Play className="w-3.5 h-3.5" /> {scheduler?.mode === "vercel_cron" ? "Enable Vercel Cron" : "Start Scheduler"}
               </button>
             )}
           </div>
@@ -565,12 +598,21 @@ export function AutonomousEngine() {
             </label>
             <label className="flex items-center gap-2 cursor-pointer">
               <input type="checkbox" checked={autoGenerateOutreach} onChange={(e) => setAutoGenerateOutreach(e.target.checked)} className="accent-purple-500 w-3.5 h-3.5" />
-              <span className="text-zinc-300">Auto-generate outreach</span>
+              <span className="text-zinc-300">Generate outreach drafts (does not send)</span>
             </label>
             <label className="flex items-center gap-2 cursor-pointer">
               <input type="checkbox" checked={autoCreateCheckout} onChange={(e) => setAutoCreateCheckout(e.target.checked)} className="accent-cyan-500 w-3.5 h-3.5" />
               <span className="text-zinc-300">Auto-create Stripe checkout</span>
             </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={autoSendOutreach} onChange={(e) => setAutoSendOutreach(e.target.checked)} className="accent-amber-500 w-3.5 h-3.5" />
+              <span className="text-zinc-300">Send email to verified public contacts (explicit opt-in)</span>
+            </label>
+            <label className="flex items-center gap-2">
+              <span className="text-zinc-300">Domains per cycle (max 10)</span>
+              <input type="number" min={1} max={10} value={maxDomainsPerCycle} onChange={(e) => setMaxDomainsPerCycle(Number(e.target.value))} className="w-16 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-white" />
+            </label>
+            <p className="text-[10px] text-zinc-500">Save configuration to apply these settings to scheduled runs. Manual cycles use the settings shown here.</p>
           </div>
 
           <div className="flex items-center gap-3 pt-2 border-t border-zinc-800">
@@ -580,10 +622,10 @@ export function AutonomousEngine() {
               </button>
             ) : (
               <button onClick={handleStartCycle} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-mono text-xs font-bold shadow-lg transition cursor-pointer">
-                <Play className="w-4 h-4" /> Run Now
+                <Play className="w-4 h-4" /> Run Single Cycle
               </button>
             )}
-            <span className="text-[11px] text-zinc-500 font-mono">One-shot cycle across all targets</span>
+            <span className="text-[11px] text-zinc-500 font-mono">One bounded batch; no revenue until payment</span>
           </div>
         </div>
       </div>

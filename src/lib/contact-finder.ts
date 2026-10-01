@@ -121,6 +121,10 @@ function extractEmails(html: string, domain: string): string[] {
   const cleanEmails = matches
     .map((e) => e.replace(/^mailto:/i, "").toLowerCase().trim())
     .filter((e) => {
+      // Only use contact addresses belonging to the audited business, not
+      // third-party emails embedded in scripts, examples, or partner content.
+      const mailDomain = e.split("@").pop() || "";
+      if (mailDomain !== domain && !mailDomain.endsWith(`.${domain}`)) return false;
       // Filter out obvious junk
       if (e.includes("example.com") || e.includes("test.com")) return false;
       if (e.includes("sentry.io") || e.includes("wixpress")) return false;

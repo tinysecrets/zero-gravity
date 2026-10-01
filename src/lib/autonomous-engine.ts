@@ -1,22 +1,14 @@
 import { runDomainAudit, type AuditResult } from "./audit-engine";
 import { sendOutreach } from "./email-outreach";
 import { findContact } from "./contact-finder";
+import { createPaymentCheckout } from "./payment-checkout";
+import { CYCLE_BUDGET_MS, defaultCycleConfig, parseCycleConfig, type CycleConfig } from "./automation-config";
 import { db } from "@/db";
-import { opportunities, scanTargets, autonomousRuns, paymentRequests, revenueEvents } from "@/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { opportunities, scanTargets, autonomousRuns, revenueEvents } from "@/db/schema";
+import { and, eq, ne, sql } from "drizzle-orm";
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-export type StepType =
-  | "scan"
-  | "audit"
-  | "decide"
-  | "deal_created"
-  | "outreach_generated"
-  | "checkout_created"
-  | "skipped";
+export type { CycleConfig } from "./automation-config";
+export type StepType = "scan" | "audit" | "decide" | "deal_created" | "outreach_generated" | "checkout_created" | "skipped";
 
 export interface CycleStep {
   type: StepType;
@@ -54,569 +46,202 @@ export interface CycleState {
   error?: string;
 }
 
-export interface CycleConfig {
-  scoreThreshold: number;
-  autoCreateDeals: boolean;
-  autoGenerateOutreach: boolean;
-  autoCreateCheckout: boolean;
-}
-
-// ---------------------------------------------------------------------------
-// Module-level state — one active cycle at a time
-// ---------------------------------------------------------------------------
-
 let activeCycle: CycleState | null = null;
-let stopRequested = false;
+export function getActiveCycle(): CycleState | null { return activeCycle; }
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-const DEFAULT_CONFIG: CycleConfig = {
-  scoreThreshold: 65,
-  autoCreateDeals: true,
-  autoGenerateOutreach: true,
-  // Stripe is already provisioned in production; when present, every qualified deal gets a live checkout.
-  autoCreateCheckout: Boolean(process.env.STRIPE_SECRET_KEY),
-};
-
-/**
- * Offer tier pricing.
- * - remediation:  quick DNS patch, $350 flat
- * - implementation: full deliverability overhaul, $1,500–$3,000
- * - monitoring:   ongoing $199/mo or $299/mo (subscription)
- *
- * The engine picks the tier based on audit severity.
- */
-const TIER_PRICING = {
-  remediation: { min: 250, max: 450 },
-  implementation: { min: 1500, max: 3000 },
-} as const;
+type Deal = typeof opportunities.$inferSelect;
+type Target = typeof scanTargets.$inferSelect;
 
 function pickOfferTier(audit: AuditResult): "remediation" | "implementation" {
-  // Critical score + multiple findings → implementation bundle
-  if (audit.score < 50 && audit.findings.filter((f) => f.severity === "Critical").length >= 2) {
-    return "implementation";
-  }
-  return "remediation";
+  return audit.score < 50 && audit.findings.filter((f) => f.severity === "Critical").length >= 2
+    ? "implementation" : "remediation";
 }
 
-function priceForTier(tier: "remediation" | "implementation", audit: AuditResult): number {
-  if (tier === "implementation") {
-    // Scale by leakage
-    if (audit.estimatedMonthlyLeakage > 3000) return 3000;
-    if (audit.estimatedMonthlyLeakage > 1500) return 2250;
-    return 1500;
-  }
-  // remediation
-  return audit.score < 50 ? 450 : audit.score < 70 ? 350 : 250;
+function priceForTier(tier: string, audit: AuditResult): number {
+  return tier === "implementation" ? 1500 : audit.score < 50 ? 450 : audit.score < 70 ? 350 : 250;
 }
 
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
-
-export function getActiveCycle(): CycleState | null {
-  return activeCycle;
-}
-
-export function requestStop(): boolean {
-  if (activeCycle?.status === "running") {
-    stopRequested = true;
-    return true;
-  }
-  return false;
-}
-
-export async function executeCycle(
-  config: Partial<CycleConfig> = {}
-): Promise<CycleState> {
-  if (activeCycle?.status === "running") {
-    throw new Error("A cycle is already running. Stop it first.");
-  }
-
-  const fullConfig = { ...DEFAULT_CONFIG, ...config };
-  const cycleId = crypto.randomUUID();
-
+// Called only through the scheduler's database-backed execution lease.
+export async function executeCycle(config: Partial<CycleConfig> = {}, options: {
+  shouldStop?: () => Promise<boolean>;
+} = {}): Promise<CycleState> {
+  const fullConfig = { ...defaultCycleConfig(), ...parseCycleConfig(config) };
+  const deadline = Date.now() + CYCLE_BUDGET_MS;
   const state: CycleState = {
-    id: cycleId,
-    status: "running",
-    startedAt: new Date().toISOString(),
-    config: fullConfig,
-    steps: [],
-    summary: {
-      domainsScanned: 0,
-      opportunitiesFound: 0,
-      dealsCreated: 0,
-      outreachGenerated: 0,
-      checkoutsCreated: 0,
-      totalEstimatedValue: 0,
-    },
+    id: crypto.randomUUID(), status: "running", startedAt: new Date().toISOString(),
+    config: fullConfig, steps: [],
+    summary: { domainsScanned: 0, opportunitiesFound: 0, dealsCreated: 0, outreachGenerated: 0, checkoutsCreated: 0, totalEstimatedValue: 0 },
   };
-
   activeCycle = state;
-  stopRequested = false;
-
-  // Persist the run record
-  await db.insert(autonomousRuns).values({
-    id: cycleId,
-    status: "running",
-    scoreThreshold: fullConfig.scoreThreshold,
-    autoCreateDeals: fullConfig.autoCreateDeals,
-    autoGenerateOutreach: fullConfig.autoGenerateOutreach,
-    autoCreateCheckout: fullConfig.autoCreateCheckout,
-  });
-
+  const shouldStop = async () => Date.now() >= deadline || Boolean(await options.shouldStop?.());
   try {
-    const targets = await db
-      .select()
-      .from(scanTargets)
-      .where(eq(scanTargets.isActive, true))
-      .orderBy(scanTargets.priority);
-
-    if (targets.length === 0) {
-      addStep(state, {
-        type: "skipped",
-        domain: "(none)",
-        message: "No active scan targets. Add targets or run prospect acquisition to begin.",
-      });
-    }
+    await db.insert(autonomousRuns).values({
+      id: state.id, status: "running", ...fullConfig,
+      details: JSON.stringify({ steps: [], config: fullConfig }),
+    });
+    const targets = await db.select().from(scanTargets)
+      .where(and(eq(scanTargets.isActive, true), ne(scanTargets.source, "demo")))
+      // Rotate bounded batches so the same high-priority domains cannot starve others.
+      .orderBy(sql`${scanTargets.lastAuditedAt} ASC NULLS FIRST`, scanTargets.priority, scanTargets.id)
+      .limit(fullConfig.maxDomainsPerCycle);
+    if (!targets.length) addStep(state, { type: "skipped", domain: "(none)", message: "No active targets. Add reviewed prospects in the dashboard to begin." });
 
     for (const target of targets) {
-      if (stopRequested) {
-        addStep(state, {
-          type: "skipped",
-          domain: target.domain,
-          message: "Cycle stopped by user.",
-        });
+      if (await shouldStop()) {
+        state.status = "stopped";
+        addStep(state, { type: "skipped", domain: target.domain, message: "Stop requested or execution budget reached." });
         break;
       }
-
-      await processDomain(state, fullConfig, target.domain, target.niche, target.industry || undefined, target.source, target.id);
+      // Leave enough headroom for bounded DNS, contact, Stripe, and mail calls,
+      // plus final persistence, before the 300-second Vercel function deadline.
+      if (deadline - Date.now() < 120_000) {
+        addStep(state, { type: "skipped", domain: target.domain, message: "Batch budget reached. Remaining targets will be picked up next run." });
+        break;
+      }
+      await processDomain(state, target, shouldStop);
+      await persistRun(state);
     }
-
-    state.status = stopRequested ? "stopped" : "completed";
-    state.completedAt = new Date().toISOString();
-  } catch (err) {
+    if (state.status === "running") state.status = await shouldStop() ? "stopped" : "completed";
+  } catch (error) {
     state.status = "failed";
-    state.error = err instanceof Error ? err.message : "Unknown error";
+    state.error = error instanceof Error ? error.message : "Unknown execution error";
+  } finally {
     state.completedAt = new Date().toISOString();
+    try { await persistRun(state); }
+    finally { activeCycle = null; }
   }
-
-  // Persist final state
-  await persistRun(state);
-  activeCycle = null;
   return state;
 }
 
-// ---------------------------------------------------------------------------
-// Per-domain processing pipeline
-// ---------------------------------------------------------------------------
-
-async function processDomain(
-  state: CycleState,
-  config: CycleConfig,
-  domain: string,
-  niche: string,
-  industry: string | undefined,
-  source: string,
-  targetId: number
-): Promise<void> {
-  // ── Step 1: Scan / Audit ──────────────────────────────────────────────────
-  addStep(state, {
-    type: "scan",
-    domain,
-    niche,
-    industry,
-    message: `Scanning DNS records for ${domain}…`,
-  });
-
+async function processDomain(state: CycleState, target: Target, shouldStop: () => Promise<boolean>): Promise<void> {
+  const config = state.config;
+  const { domain, niche } = target;
+  addStep(state, { type: "scan", domain, niche, message: `Inspecting public DNS records for ${domain}.` });
   let audit: AuditResult;
-  try {
-    audit = await runDomainAudit(domain, niche);
-  } catch (err) {
-    addStep(state, {
-      type: "audit",
-      domain,
-      message: `Audit failed for ${domain}: ${err instanceof Error ? err.message : "unknown error"}`,
-    });
+  try { audit = await runDomainAudit(domain, niche); }
+  catch (error) {
+    addStep(state, { type: "skipped", domain, message: `DNS audit unavailable; no offer created: ${error instanceof Error ? error.message : "unknown error"}` });
+    // Failed targets also rotate instead of occupying the first batch forever.
+    await db.update(scanTargets).set({ lastAuditedAt: new Date() }).where(eq(scanTargets.id, target.id));
     return;
   }
-
   state.summary.domainsScanned++;
+  addStep(state, { type: "audit", domain, niche, score: audit.score, grade: audit.grade,
+    message: `DNS score ${audit.score}/100 (${audit.grade}). DMARC: ${audit.dmarcPresent ? audit.dmarcPolicy : "not found"}. SPF: ${audit.spfPresent ? "present" : "not found"}. DNS alone does not establish lost revenue.` });
+  await db.update(scanTargets).set({ lastAuditedAt: new Date(), lastScore: audit.score }).where(eq(scanTargets.id, target.id));
+  if (await shouldStop()) return;
 
-  addStep(state, {
-    type: "audit",
-    domain,
-    niche,
-    industry,
-    score: audit.score,
-    grade: audit.grade,
-    message: `Score ${audit.score}/100 (${audit.grade}). DMARC: ${audit.dmarcPresent ? audit.dmarcPolicy : "missing"}. SPF: ${audit.spfPresent ? "present" : "missing"}. Est. leakage: $${audit.estimatedMonthlyLeakage.toLocaleString()}/mo.`,
-  });
-
-  // Update scan target with latest audit results
-  await db
-    .update(scanTargets)
-    .set({ lastAuditedAt: new Date(), lastScore: audit.score })
-    .where(eq(scanTargets.id, targetId));
-
-  // ── Step 2: Decide ────────────────────────────────────────────────────────
-  // Reality gate: never create a second deal for the same domain while an open/recent deal exists.
-  const existingDeal = await db
-    .select({ id: opportunities.id, status: opportunities.status })
-    .from(opportunities)
-    .where(eq(opportunities.targetCompany, domain))
-    .limit(1);
-
-  const isActionable = audit.score < config.scoreThreshold && existingDeal.length === 0;
-  state.summary.opportunitiesFound += isActionable ? 1 : 0;
-
-  addStep(state, {
-    type: "decide",
-    domain,
-    score: audit.score,
-    message: isActionable
-      ? `ACTIONABLE — score ${audit.score} < threshold ${config.scoreThreshold}. Executing.`
-      : existingDeal.length > 0
-        ? `NO ACTION — existing deal #${existingDeal[0].id} already exists. Duplicate suppressed.`
-        : `NO ACTION — score ${audit.score} ≥ threshold ${config.scoreThreshold}. Passing.`,
-  });
-
-  if (!isActionable) return;
-
-  // ── Step 3: Determine offer tier and price ────────────────────────────────
-  const tier = pickOfferTier(audit);
-  const bounty = priceForTier(tier, audit);
-
-  // ── Step 4: Create deal ───────────────────────────────────────────────────
+  const [existing] = await db.select().from(opportunities).where(eq(opportunities.targetCompany, domain)).limit(1);
+  const actionable = audit.score < config.scoreThreshold;
+  if (existing) {
+    const metadata = existing.auditData ? JSON.parse(existing.auditData) : {};
+    if (actionable && existing.status === "audited" && metadata.automatedCycleId) {
+      addStep(state, { type: "decide", domain, dealId: existing.id, message: "Resuming the existing autonomous deal; no duplicate created." });
+      await fulfillDeal(state, existing, audit, target, shouldStop);
+    } else {
+      addStep(state, { type: "skipped", domain, dealId: existing.id, message: "Existing deal or non-actionable audit; duplicate suppressed." });
+    }
+    return;
+  }
+  addStep(state, { type: "decide", domain, score: audit.score,
+    message: actionable ? `ACTIONABLE — DNS score below ${config.scoreThreshold}.` : "No action; DNS score meets the threshold." });
+  if (!actionable) return;
+  state.summary.opportunitiesFound++;
   if (!config.autoCreateDeals) return;
-
-  const offerLabel = tier === "implementation"
-    ? `Revenue & Deliverability Recovery Implementation — $${bounty.toLocaleString()}`
-    : `Deliverability Remediation — $${bounty}`;
-
-  // ── Find the real decision-maker ─────────────────────────────────────────
   const contact = await findContact(domain);
-
-  addStep(state, {
-    type: "decide",
-    domain,
-    score: audit.score,
-    message: contact.email
-      ? `Contact found: ${contact.email} (${contact.contactName || "unknown"}, ${contact.contactRole || "unknown"}, ${contact.confidence} confidence, source: ${contact.source})`
-      : `No verifiable email found for ${domain}. Skipping outreach.`,
-  });
-
-  // Don't create a deal if we can't reach anyone
-  if (!contact.email) return;
-
-  const [newDeal] = await db
-    .insert(opportunities)
-    .values({
-      title: `${domain} — ${offerLabel}`,
-      vector: "technical_leak_audit",
-      targetCompany: domain,
-      targetContact: contact.contactName && contact.contactRole
-        ? `${contact.contactName} (${contact.contactRole})`
-        : contact.contactName || contact.contactRole || "Decision Maker",
-      targetEmail: contact.email,
-      targetNiche: niche,
-      status: "audited",
-      potentialValue: String(bounty),
-      operatorFeePercent: "100.00",
-      grossTransactionValue: String(bounty),
-      realizedRevenue: "0.00",
-      capitalSpent: "0.00",
-      outreachMessage: tier === "implementation"
-        ? buildImplementationOutreach(domain, audit, bounty, contact.contactName)
-        : personalizeOutreach(audit.readyOutreachCopy, contact.contactName, domain),
-      contractTerms: tier === "implementation"
-        ? `Revenue & Deliverability Recovery Package: $${bounty}. Includes full DMARC/SPF/DKIM configuration, deliverability monitoring setup, and 30-day verification.`
-        : `Fixed one-time remediation fee: $${bounty}. 100% satisfaction guarantee.`,
-      notes: `Autonomous cycle ${state.id.slice(0, 8)}. Score: ${audit.score}/100. Grade: ${audit.grade}. Tier: ${tier}. Monthly leakage: $${audit.estimatedMonthlyLeakage}. Contact: ${contact.email} (${contact.source}, ${contact.confidence}). Source: ${source}.`,
-      auditData: JSON.stringify({
-        score: audit.score,
-        grade: audit.grade,
-        dmarcPresent: audit.dmarcPresent,
-        dmarcPolicy: audit.dmarcPolicy,
-        spfPresent: audit.spfPresent,
-        estimatedMonthlyLeakage: audit.estimatedMonthlyLeakage,
-        findings: audit.findings.map((f) => ({ title: f.title, severity: f.severity })),
-        offerTier: tier,
-        contactEmail: contact.email,
-        contactName: contact.contactName,
-        contactSource: contact.source,
-        contactConfidence: contact.confidence,
-        automatedCycleId: state.id,
-      }),
-      offerTier: tier,
-      acquisitionSource: source,
-    })
-    .returning();
-
+  // A guessed info@ address is not a verified contact and must not receive automation.
+  if (!contact.email || contact.source !== "website" || contact.confidence !== "high") {
+    addStep(state, { type: "skipped", domain, message: "No verified public contact found. Guessed email addresses are not used for automated offers." });
+    return;
+  }
+  if (await shouldStop()) return;
+  const tier = pickOfferTier(audit);
+  const price = priceForTier(tier, audit);
+  const service = tier === "implementation" ? "Deliverability implementation" : "Deliverability remediation";
+  const [deal] = await db.insert(opportunities).values({
+    title: `${domain} — ${service}`, vector: "technical_leak_audit", targetCompany: domain,
+    targetContact: contact.contactName || "Public business contact", targetEmail: contact.email,
+    targetNiche: niche, status: "audited", potentialValue: price.toFixed(2), operatorFeePercent: "100.00",
+    grossTransactionValue: price.toFixed(2), realizedRevenue: "0.00", capitalSpent: "0.00",
+    contractTerms: `Proposed ${service} fee: $${price}. Scope, authorization, and delivery must be agreed with the customer.`,
+    notes: `Autonomous cycle ${state.id}. Public DNS observations only; no revenue or inbox-placement guarantee.`,
+    auditData: JSON.stringify({
+      score: audit.score, grade: audit.grade, findings: audit.findings,
+      contactEmail: contact.email, contactName: contact.contactName,
+      contactSource: contact.source, contactConfidence: contact.confidence, automatedCycleId: state.id,
+    }),
+    offerTier: tier, acquisitionSource: target.source,
+  }).returning();
   state.summary.dealsCreated++;
-  state.summary.totalEstimatedValue += bounty;
+  state.summary.totalEstimatedValue += price;
+  await db.update(scanTargets).set({ lastDealId: deal.id }).where(eq(scanTargets.id, target.id));
+  addStep(state, { type: "deal_created", domain, dealId: deal.id, offerTier: tier, potentialValue: price,
+    message: `Deal #${deal.id} created for $${price}. This is a proposed invoice, not received funds.` });
+  await fulfillDeal(state, deal, audit, target, shouldStop);
+}
 
-  // Update scan target with deal reference
-  await db
-    .update(scanTargets)
-    .set({ lastDealId: newDeal.id })
-    .where(eq(scanTargets.id, targetId));
-
-  addStep(state, {
-    type: "deal_created",
-    domain,
-    dealId: newDeal.id,
-    offerTier: tier,
-    potentialValue: bounty,
-    message: `Deal #${newDeal.id} created. Tier: ${tier}. Price: $${bounty.toLocaleString()}. Status: audited.`,
-  });
-
-  // ── Step 5: Create Stripe checkout first (URL goes in the email) ────────
-  let checkoutUrl: string | undefined;
-  if (config.autoCreateCheckout) {
-    checkoutUrl = await createCheckout(state, domain, newDeal.id, tier, bounty);
-  }
-
-  // ── Step 6: Generate and SEND outreach ──────────────────────────────────
-  if (checkoutUrl) {
-    await db.insert(revenueEvents).values({
-      opportunityId: newDeal.id,
-      industry: industry || null,
-      offerTier: tier,
-      acquisitionSource: source,
-      amount: String(bounty),
-      eventType: "checkout_created",
-    });
-  }
-
-  if (config.autoGenerateOutreach && checkoutUrl) {
+async function fulfillDeal(state: CycleState, deal: Deal, audit: AuditResult, target: Target, shouldStop: () => Promise<boolean>): Promise<void> {
+  const { domain } = target;
+  const config = state.config;
+  const metadata = deal.auditData ? JSON.parse(deal.auditData) : {};
+  if (config.autoGenerateOutreach && deal.outreachDeliveryStatus === "draft" &&
+    (!deal.outreachMessage || metadata.outreachCopyVersion !== "dns-v1")) {
+    const outreachMessage = buildOfferOutreach(domain, audit, deal, metadata.contactName);
+    await db.update(opportunities).set({
+      outreachMessage, auditData: JSON.stringify({ ...metadata, outreachCopyVersion: "dns-v1" }), updatedAt: new Date(),
+    }).where(eq(opportunities.id, deal.id));
+    deal.outreachMessage = outreachMessage;
     state.summary.outreachGenerated++;
-
-    const outreachResult = await sendOutreach(newDeal.id);
-
-    addStep(state, {
-      type: "outreach_generated",
-      domain,
-      dealId: newDeal.id,
-      offerTier: tier,
-      message: outreachResult.sent
-        ? `Email sent to ${outreachResult.recipientEmail}: "${outreachResult.subject}"`
-        : outreachResult.error || "Outreach generated but not sent.",
-    });
+    addStep(state, { type: "outreach_generated", domain, dealId: deal.id, message: "Outreach draft generated from observed DNS findings. No email sent yet." });
+  }
+  if (await shouldStop()) return;
+  let checkoutUrl: string | null = null;
+  if (config.autoCreateCheckout) {
+    try {
+      const result = await createPaymentCheckout({
+        opportunityId: deal.id, amount: deal.potentialValue, clientName: domain,
+        serviceDescription: deal.title, reusePending: true,
+      });
+      checkoutUrl = result.paymentRequest.checkoutUrl;
+      if (result.created) {
+        state.summary.checkoutsCreated++;
+        await db.insert(revenueEvents).values({
+          opportunityId: deal.id, industry: target.industry, offerTier: deal.offerTier,
+          acquisitionSource: target.source, amount: deal.potentialValue, eventType: "checkout_created",
+        });
+      }
+      addStep(state, { type: "checkout_created", domain, dealId: deal.id,
+        referenceCode: result.paymentRequest.referenceCode, checkoutUrl: checkoutUrl || undefined,
+        message: checkoutUrl ? `${result.paymentRequest.livemode ? "Live" : "Test"} checkout ready. Customer payment is required before revenue is recorded.` : "Checkout is blocked by provider configuration." });
+    } catch (error) {
+      addStep(state, { type: "skipped", domain, dealId: deal.id, message: `Checkout unavailable; saved draft can be retried: ${error instanceof Error ? error.message : "unknown error"}` });
+    }
+  }
+  if (await shouldStop()) return;
+  if (config.autoSendOutreach && deal.outreachMessage && checkoutUrl) {
+    if (metadata.contactSource !== "website" || metadata.contactConfidence !== "high") {
+      addStep(state, { type: "skipped", domain, dealId: deal.id, message: "Outreach withheld: the saved contact needs verification." });
+      return;
+    }
+    const result = await sendOutreach(deal.id);
+    addStep(state, { type: "outreach_generated", domain, dealId: deal.id,
+      message: result.sent ? `Email delivered to provider for ${result.recipientEmail}.` : result.error || "Email withheld." });
   }
 }
 
-// ---------------------------------------------------------------------------
-// Stripe checkout creation (extracted for clarity)
-// ---------------------------------------------------------------------------
-
-async function createCheckout(
-  state: CycleState,
-  domain: string,
-  dealId: number,
-  tier: string,
-  bounty: number
-): Promise<string | undefined> {
-  const secretKey = process.env.STRIPE_SECRET_KEY;
-  if (!secretKey) {
-    addStep(state, {
-      type: "checkout_created",
-      domain,
-      dealId,
-      offerTier: tier,
-      message: "Skipped — STRIPE_SECRET_KEY not configured.",
-    });
-    return undefined;
-  }
-
-  try {
-    const { Stripe } = await import("stripe");
-    const stripe = new Stripe(secretKey);
-    const referenceCode = `INV-${crypto.randomUUID().split("-")[0].toUpperCase()}`;
-
-    const serviceName = tier === "implementation"
-      ? `Revenue & Deliverability Recovery — ${domain}`
-      : `Deliverability Remediation — ${domain}`;
-
-    const [paymentRequest] = await db
-      .insert(paymentRequests)
-      .values({
-        opportunityId: dealId,
-        referenceCode,
-        provider: "stripe",
-        status: "draft",
-        amount: bounty.toFixed(2),
-        currency: "usd",
-        clientName: domain,
-        serviceDescription: serviceName,
-        paymentMethod: "card",
-      })
-      .returning({ id: paymentRequests.id });
-
-    const session = await stripe.checkout.sessions.create({
-      mode: "payment",
-      payment_method_types: ["card"],
-      line_items: [
-        {
-          quantity: 1,
-          price_data: {
-            currency: "usd",
-            unit_amount: Math.round(bounty * 100),
-            product_data: {
-              name: serviceName,
-              description: `Invoice ${referenceCode} · ${tier} package`,
-            },
-          },
-        },
-      ],
-      success_url: `${process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "http://localhost:3000"}/payment/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "http://localhost:3000"}/?payment=cancelled&reference=${referenceCode}`,
-      client_reference_id: referenceCode,
-      metadata: {
-        paymentRequestId: String(paymentRequest.id),
-        referenceCode,
-        opportunityId: String(dealId),
-      },
-    });
-
-    await db
-      .update(paymentRequests)
-      .set({
-        status: "checkout_created",
-        providerSessionId: session.id,
-        checkoutUrl: session.url || "",
-        updatedAt: new Date(),
-      })
-      .where(eq(paymentRequests.id, paymentRequest.id));
-
-    state.summary.checkoutsCreated++;
-
-    addStep(state, {
-      type: "checkout_created",
-      domain,
-      dealId,
-      offerTier: tier,
-      referenceCode,
-      checkoutUrl: session.url || undefined,
-      message: `Stripe Checkout ${referenceCode} · $${bounty.toLocaleString()} · ${session.url || "(no url)"}`,
-    });
-
-    return session.url || undefined;
-  } catch (err) {
-    addStep(state, {
-      type: "checkout_created",
-      domain,
-      dealId,
-      offerTier: tier,
-      message: `Checkout failed: ${err instanceof Error ? err.message : "unknown"}`,
-    });
-    return undefined;
-  }
+function buildOfferOutreach(domain: string, audit: AuditResult, deal: Deal, name?: string | null): string {
+  const findings = audit.findings.filter((f) => f.severity !== "Passed").map((f) => `- ${f.title}: ${f.description}`).join("\n");
+  return `Subject: Public email-authentication observations for ${domain}\n\n${name ? `Hi ${name.split(" ")[0]},` : "Hi,"}\n\nI reviewed the public DNS records for ${domain} and observed:\n\n${findings}\n\nThese observations do not measure inbox placement or establish any lost revenue. A DNS review also cannot verify your internal lead-capture systems.\n\nI offer ${deal.offerTier === "implementation" ? "an email-authentication implementation review" : "email-authentication remediation"} for $${Number(deal.potentialValue).toLocaleString()}. Scope and access requirements will need your approval; no configuration changes have been made.\n\nWould you like to discuss the findings and proposed scope? If we agree to proceed, the checkout below accepts a customer-authorized card payment.\n\nThis is a commercial service offer.`;
 }
-
-// ---------------------------------------------------------------------------
-// Implementation-tier outreach copy
-// ---------------------------------------------------------------------------
-
-function buildImplementationOutreach(
-  domain: string,
-  audit: AuditResult,
-  price: number,
-  contactName?: string | null
-): string {
-  const greeting = contactName ? `Hi ${contactName.split(" ")[0]},` : "Hi,";
-  const criticalFindings = audit.findings
-    .filter((f) => f.severity === "Critical")
-    .map((f) => `- ${f.title}: ${f.description}`)
-    .join("\n");
-
-  return `Subject: Revenue leakage report for ${domain} — $${audit.estimatedMonthlyLeakage.toLocaleString()}/mo at risk
-
-${greeting}
-
-I ran a comprehensive deliverability and revenue-leakage diagnostic on ${domain} and found multiple critical issues that are actively costing your business revenue each month:
-
-${criticalFindings}
-
-The estimated monthly revenue leakage is $${audit.estimatedMonthlyLeakage.toLocaleString()} — that's roughly $${(audit.estimatedMonthlyLeakage * 12).toLocaleString()} per year silently lost to spam filters, authentication failures, and broken lead capture flows.
-
-I'm offering a full Revenue & Deliverability Recovery implementation:
-
-• Complete DMARC/SPF/DKIM configuration and enforcement
-• Email authentication verification across all sending services
-• Lead capture webhook audit and repair
-• 30-day monitoring and verification period
-• Detailed before/after deliverability report
-
-Total investment: $${price.toLocaleString()} (one-time).
-
-If the issues I've documented aren't fully resolved, you pay nothing.
-
-Would you like me to send over the full diagnostic report and implementation scope?`;
-}
-
-// ---------------------------------------------------------------------------
-// Outreach personalization
-// ---------------------------------------------------------------------------
-
-function personalizeOutreach(
-  rawCopy: string,
-  contactName: string | null,
-  domain: string
-): string {
-  if (!rawCopy) return rawCopy;
-
-  let personalized = rawCopy;
-
-  // Replace common placeholder patterns with the real name
-  if (contactName) {
-    const firstName = contactName.split(" ")[0];
-    personalized = personalized
-      .replace(/\{\{OwnerName\}\}/gi, firstName)
-      .replace(/\{\{Name\}\}/gi, firstName)
-      .replace(/\{\{FounderName\}\}/gi, firstName)
-      .replace(/\{\{FirstName\}\}/gi, firstName)
-      .replace(/\[Founder\s*\/\s*VP Operations\]/gi, firstName)
-      .replace(/\[Name\]/gi, firstName)
-      .replace(/Hi \[Founder/gi, `Hi ${firstName}`)
-      .replace(/Hi \[Name\]/gi, `Hi ${firstName}`);
-  }
-
-  // Replace domain placeholders
-  personalized = personalized
-    .replace(/\{\{domain\}\}/gi, domain)
-    .replace(/\{\{Domain\}\}/gi, domain);
-
-  return personalized;
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 function addStep(state: CycleState, step: Omit<CycleStep, "timestamp">): void {
   state.steps.push({ ...step, timestamp: new Date().toISOString() });
 }
 
 async function persistRun(state: CycleState): Promise<void> {
-  await db
-    .update(autonomousRuns)
-    .set({
-      status: state.status,
-      domainsScanned: state.summary.domainsScanned,
-      opportunitiesFound: state.summary.opportunitiesFound,
-      dealsCreated: state.summary.dealsCreated,
-      outreachGenerated: state.summary.outreachGenerated,
-      checkoutsCreated: state.summary.checkoutsCreated,
-      totalEstimatedValue: state.summary.totalEstimatedValue.toFixed(2),
-      details: JSON.stringify({
-        steps: state.steps,
-        config: state.config,
-      }),
-      error: state.error || null,
-      completedAt: state.completedAt ? new Date(state.completedAt) : null,
-    })
-    .where(eq(autonomousRuns.id, state.id));
+  await db.update(autonomousRuns).set({
+    status: state.status, ...state.summary, totalEstimatedValue: state.summary.totalEstimatedValue.toFixed(2),
+    details: JSON.stringify({ steps: state.steps, config: state.config }), error: state.error || null,
+    completedAt: state.completedAt ? new Date(state.completedAt) : null,
+  }).where(eq(autonomousRuns.id, state.id));
 }

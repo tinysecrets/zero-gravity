@@ -17,6 +17,9 @@ export const opportunities = pgTable("opportunities", {
   capitalSpent: numeric("capital_spent", { precision: 10, scale: 2 }).notNull().default("0.00"),
   notes: text("notes"),
   outreachMessage: text("outreach_message"),
+  outreachDeliveryStatus: text("outreach_delivery_status").notNull().default("draft"),
+  outreachProviderId: text("outreach_provider_id"),
+  outreachAttemptedAt: timestamp("outreach_attempted_at"),
   auditData: text("audit_data"), // JSON formatted string
   contractTerms: text("contract_terms"),
   offerTier: text("offer_tier").default("remediation"), // remediation ($350) | implementation ($1.5K-$3K) | monitoring ($199-$299/mo)
@@ -54,6 +57,7 @@ export const paymentRequests = pgTable("payment_requests", {
   opportunityId: integer("opportunity_id"),
   referenceCode: text("reference_code").notNull().unique(),
   provider: text("provider").notNull().default("stripe"),
+  livemode: boolean("livemode").notNull().default(false),
   providerSessionId: text("provider_session_id").unique(),
   checkoutUrl: text("checkout_url"),
   status: text("status").notNull().default("draft"), // draft | checkout_created | paid | expired | cancelled | provider_not_configured
@@ -111,6 +115,8 @@ export const autonomousRuns = pgTable("autonomous_runs", {
   scoreThreshold: integer("score_threshold").notNull().default(65),
   autoCreateDeals: boolean("auto_create_deals").notNull().default(true),
   autoGenerateOutreach: boolean("auto_generate_outreach").notNull().default(true),
+  autoSendOutreach: boolean("auto_send_outreach").notNull().default(false),
+  maxDomainsPerCycle: integer("max_domains_per_cycle").notNull().default(5),
   autoCreateCheckout: boolean("auto_create_checkout").notNull().default(false),
   domainsScanned: integer("domains_scanned").notNull().default(0),
   opportunitiesFound: integer("opportunities_found").notNull().default(0),
@@ -156,4 +162,26 @@ export const revenueEvents = pgTable("revenue_events", {
   amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
   eventType: text("event_type").notNull(), // checkout_created | payment_verified | subscription_started | subscription_renewed
   createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// One persisted scheduler configuration and execution lease across Vercel instances.
+export const schedulerSettings = pgTable("scheduler_settings", {
+  id: integer("id").primaryKey().default(1),
+  enabled: boolean("enabled").notNull().default(false),
+  intervalMinutes: integer("interval_minutes").notNull().default(15),
+  scoreThreshold: integer("score_threshold").notNull().default(65),
+  autoCreateDeals: boolean("auto_create_deals").notNull().default(true),
+  autoGenerateOutreach: boolean("auto_generate_outreach").notNull().default(true),
+  autoSendOutreach: boolean("auto_send_outreach").notNull().default(false),
+  autoCreateCheckout: boolean("auto_create_checkout").notNull().default(false),
+  maxDomainsPerCycle: integer("max_domains_per_cycle").notNull().default(5),
+  stopRequested: boolean("stop_requested").notNull().default(false),
+  leaseOwner: text("lease_owner"),
+  leaseExpiresAt: timestamp("lease_expires_at"),
+  nextRunAt: timestamp("next_run_at"),
+  lastRunAt: timestamp("last_run_at"),
+  lastRunStatus: text("last_run_status"),
+  totalRuns: integer("total_runs").notNull().default(0),
+  consecutiveErrors: integer("consecutive_errors").notNull().default(0),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

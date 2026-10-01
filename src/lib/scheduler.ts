@@ -1,24 +1,19 @@
+import { db } from "@/db";
+import { autonomousRuns, schedulerSettings } from "@/db/schema";
+import { and, eq, isNull, lte, or, sql } from "drizzle-orm";
+import { ensureDbInitialized } from "./db-seed";
+import { executeCycle, type CycleState } from "./autonomous-engine";
 import {
-  executeCycle,
-  getActiveCycle,
+  automationReadiness,
+  isVercel,
+  nextVercelRun,
+  parseCycleConfig,
+  parseIntervalMinutes,
+  RUN_LEASE_MS,
+  VERCEL_CRON_SCHEDULE,
+  type AutomationReadiness,
   type CycleConfig,
-} from "./autonomous-engine";
-
-// ---------------------------------------------------------------------------
-// Scheduler
-//
-// Two modes:
-//
-// 1. Vercel Cron (production) — the /api/autonomous/cron route is called by
-//    Vercel's infrastructure on a cron schedule configured in vercel.json.
-//    The cron route calls runOnce() directly.
-//
-// 2. In-process timer (development / non-Vercel) — the scheduler self-
-//    initializes lazily on the first /api/autonomous/schedule API touch.
-//    Uses setTimeout recursion, stored on globalThis to survive HMR.
-//
-// Both modes share the same CycleConfig.
-// ---------------------------------------------------------------------------
+} from "./automation-config";
 
 export interface SchedulerConfig {
   enabled: boolean;
@@ -26,181 +21,199 @@ export interface SchedulerConfig {
   cycleConfig: CycleConfig;
 }
 
-export interface SchedulerStatus {
-  enabled: boolean;
-  intervalMinutes: number;
+export interface SchedulerStatus extends SchedulerConfig {
   nextRunAt: string | null;
   lastRunAt: string | null;
   lastRunStatus: string | null;
   cycleActive: boolean;
   totalRuns: number;
   consecutiveErrors: number;
-  cycleConfig: CycleConfig;
   mode: "vercel_cron" | "in_process";
+  cronSchedule: string | null;
+  readiness: AutomationReadiness;
 }
 
-// ---------------------------------------------------------------------------
-// Singleton state
-// ---------------------------------------------------------------------------
-
-interface SchedulerState {
-  timer: ReturnType<typeof setInterval> | null;
-  config: SchedulerConfig;
-  nextRunAt: number | null;
-  lastRunAt: number | null;
-  lastRunStatus: string | null;
-  totalRuns: number;
-  consecutiveErrors: number;
-  runInProgress: boolean;
+export interface RunResult {
+  status: "completed" | "failed" | "stopped" | "skipped" | "blocked";
+  reason?: string;
+  cycle?: CycleState;
 }
 
-const GLOBAL_KEY = "__zeroGravityScheduler";
+type Settings = typeof schedulerSettings.$inferSelect;
+const globalForTimer = globalThis as typeof globalThis & {
+  __zeroGravitySchedulerTimer?: ReturnType<typeof setTimeout>;
+};
 
-function getState(): SchedulerState {
-  const g = globalThis as Record<string, unknown>;
-  if (!g[GLOBAL_KEY]) {
-    g[GLOBAL_KEY] = {
-      timer: null,
-      config: {
-        enabled: false,
-        intervalMinutes: 15,
-        cycleConfig: {
-          scoreThreshold: 65,
-          autoCreateDeals: true,
-          autoGenerateOutreach: true,
-          autoCreateCheckout: Boolean(process.env.STRIPE_SECRET_KEY),
-        },
-      },
-      nextRunAt: null,
-      lastRunAt: null,
-      lastRunStatus: null,
-      totalRuns: 0,
-      consecutiveErrors: 0,
-      runInProgress: false,
-    } satisfies SchedulerState;
-  }
-  return g[GLOBAL_KEY] as SchedulerState;
-}
-
-// ---------------------------------------------------------------------------
-// runOnce — called by both the in-process timer and the Vercel cron route
-// ---------------------------------------------------------------------------
-
-export async function runOnce(): Promise<string> {
-  const state = getState();
-
-  if (state.runInProgress || getActiveCycle()?.status === "running") {
-    return "skipped: cycle already running";
-  }
-
-  state.runInProgress = true;
-  state.lastRunAt = Date.now();
-  state.totalRuns++;
-
-  try {
-    const result = await executeCycle(state.config.cycleConfig);
-    state.lastRunStatus = result.status;
-    state.consecutiveErrors = 0;
-    return result.status;
-  } catch (err) {
-    state.lastRunStatus = "failed";
-    state.consecutiveErrors++;
-    console.error(`[Scheduler] Cycle #${state.totalRuns} failed:`, err);
-    return "failed";
-  } finally {
-    state.runInProgress = false;
-    if (state.config.enabled) {
-      scheduleNext(state);
-    }
-  }
-}
-
-// ---------------------------------------------------------------------------
-// In-process timer (for non-Vercel deployments)
-// ---------------------------------------------------------------------------
-
-function scheduleNext(state: SchedulerState): void {
-  if (!state.config.enabled) {
-    state.nextRunAt = null;
-    return;
-  }
-
-  const backoff = state.consecutiveErrors > 0
-    ? Math.min(state.consecutiveErrors, 4)
-    : 0;
-  const delayMinutes = state.config.intervalMinutes * (1 << backoff);
-
-  state.nextRunAt = Date.now() + delayMinutes * 60_000;
-
-  if (state.timer) clearTimeout(state.timer);
-  state.timer = setTimeout(() => {
-    runOnce();
-  }, delayMinutes * 60_000);
-}
-
-export function ensureSchedulerRunning(): void {
-  const state = getState();
-  if (state.config.enabled && !state.timer && !state.runInProgress) {
-    runOnce();
-  }
-}
-
-export function startScheduler(
-  partial: Partial<SchedulerConfig> = {}
-): SchedulerStatus {
-  const state = getState();
-
-  if (partial.enabled !== undefined) state.config.enabled = partial.enabled;
-  if (partial.intervalMinutes !== undefined)
-    state.config.intervalMinutes = Math.max(1, Math.round(partial.intervalMinutes));
-  if (partial.cycleConfig) {
-    state.config.cycleConfig = {
-      ...state.config.cycleConfig,
-      ...partial.cycleConfig,
-    };
-  }
-
-  state.config.enabled = true;
-
-  // Fire the first cycle in the background — don't block the caller
-  if (!state.runInProgress) {
-    runOnce().catch((err) => {
-      console.error("[Scheduler] First cycle failed:", err);
-    });
-  }
-
-  return getStatus();
-}
-
-export function stopScheduler(): SchedulerStatus {
-  const state = getState();
-  state.config.enabled = false;
-  state.nextRunAt = null;
-
-  if (state.timer) {
-    clearTimeout(state.timer);
-    state.timer = null;
-  }
-
-  return getStatus();
-}
-
-export function getStatus(): SchedulerStatus {
-  const state = getState();
+function cycleConfig(settings: Settings): CycleConfig {
   return {
-    enabled: state.config.enabled,
-    intervalMinutes: state.config.intervalMinutes,
-    nextRunAt: state.nextRunAt ? new Date(state.nextRunAt).toISOString() : null,
-    lastRunAt: state.lastRunAt ? new Date(state.lastRunAt).toISOString() : null,
-    lastRunStatus: state.lastRunStatus,
-    cycleActive: getActiveCycle()?.status === "running" || state.runInProgress,
-    totalRuns: state.totalRuns,
-    consecutiveErrors: state.consecutiveErrors,
-    cycleConfig: { ...state.config.cycleConfig },
-    mode: isVercelCronConfigured() ? "vercel_cron" : "in_process",
+    scoreThreshold: settings.scoreThreshold,
+    autoCreateDeals: settings.autoCreateDeals,
+    autoGenerateOutreach: settings.autoGenerateOutreach,
+    autoSendOutreach: settings.autoSendOutreach,
+    autoCreateCheckout: settings.autoCreateCheckout,
+    maxDomainsPerCycle: settings.maxDomainsPerCycle,
   };
 }
 
-function isVercelCronConfigured(): boolean {
-  return Boolean(process.env.CRON_SECRET || process.env.VERCEL);
+async function loadSettings(): Promise<Settings> {
+  await ensureDbInitialized();
+  const [settings] = await db.select().from(schedulerSettings).where(eq(schedulerSettings.id, 1));
+  if (!settings) throw new Error("Scheduler configuration is missing.");
+  return settings;
+}
+
+export async function getStatus(): Promise<SchedulerStatus> {
+  const settings = await loadSettings();
+  const enabled = settings.enabled && process.env.AUTONOMOUS_ENABLED !== "false";
+  const config = cycleConfig(settings);
+  const next = enabled
+    ? settings.nextRunAt || (isVercel() ? nextVercelRun() : new Date())
+    : null;
+  return {
+    enabled,
+    intervalMinutes: isVercel() ? 1440 : settings.intervalMinutes,
+    cycleConfig: config,
+    nextRunAt: next?.toISOString() || null,
+    lastRunAt: settings.lastRunAt?.toISOString() || null,
+    lastRunStatus: settings.lastRunStatus,
+    cycleActive: Boolean(settings.leaseOwner && settings.leaseExpiresAt && settings.leaseExpiresAt > new Date()),
+    totalRuns: settings.totalRuns,
+    consecutiveErrors: settings.consecutiveErrors,
+    mode: isVercel() ? "vercel_cron" : "in_process",
+    cronSchedule: isVercel() ? VERCEL_CRON_SCHEDULE : null,
+    readiness: automationReadiness(config),
+  };
+}
+
+export async function startScheduler(partial: Partial<SchedulerConfig> = {}): Promise<SchedulerStatus> {
+  if (partial.enabled === false) return stopScheduler();
+  await loadSettings();
+  const updates = parseCycleConfig(partial.cycleConfig || {});
+  const intervalMinutes = isVercel() ? 1440 : partial.intervalMinutes === undefined
+    ? undefined : parseIntervalMinutes(partial.intervalMinutes);
+  await db.update(schedulerSettings).set({
+    ...updates,
+    ...(intervalMinutes === undefined ? {} : { intervalMinutes }),
+    enabled: true,
+    nextRunAt: null,
+    updatedAt: new Date(),
+  }).where(eq(schedulerSettings.id, 1));
+  // On Vercel the next authenticated cron request runs the job; no detached task
+  // or process timer can be relied on after a serverless response finishes.
+  if (!isVercel()) await ensureSchedulerRunning();
+  return getStatus();
+}
+
+export async function stopScheduler(): Promise<SchedulerStatus> {
+  await loadSettings();
+  await db.update(schedulerSettings).set({
+    enabled: false,
+    stopRequested: true,
+    nextRunAt: null,
+    updatedAt: new Date(),
+  }).where(eq(schedulerSettings.id, 1));
+  clearLocalTimer();
+  return getStatus();
+}
+
+export async function requestCycleStop(): Promise<boolean> {
+  await loadSettings();
+  const rows = await db.update(schedulerSettings).set({ stopRequested: true, updatedAt: new Date() })
+    .where(and(eq(schedulerSettings.id, 1), sql`${schedulerSettings.leaseExpiresAt} > NOW()`))
+    .returning({ id: schedulerSettings.id });
+  return rows.length > 0;
+}
+
+// A PostgreSQL lease, not module memory, prevents overlapping cron/manual runs
+// across cold starts, concurrent function instances, and retries.
+export async function runOnce(options: {
+  force?: boolean;
+  cycleConfig?: Partial<CycleConfig>;
+} = {}): Promise<RunResult> {
+  const settings = await loadSettings();
+  if (process.env.AUTONOMOUS_ENABLED === "false") {
+    return { status: "skipped", reason: "Disabled by AUTONOMOUS_ENABLED=false." };
+  }
+  if (!options.force && (!settings.enabled || process.env.VERCEL_ENV === "preview")) {
+    return { status: "skipped", reason: "Scheduler is paused or this is a preview deployment." };
+  }
+  const config = { ...cycleConfig(settings), ...parseCycleConfig(options.cycleConfig || {}) };
+  const readiness = automationReadiness(config);
+  if (!readiness.ready) {
+    // Do not overwrite an active run's status with a configuration failure.
+    await db.update(schedulerSettings).set({ lastRunStatus: "blocked", updatedAt: new Date() })
+      .where(and(eq(schedulerSettings.id, 1), or(isNull(schedulerSettings.leaseOwner), lte(schedulerSettings.leaseExpiresAt, new Date()))));
+    return { status: "blocked", reason: readiness.blockers.join(" ") };
+  }
+
+  const now = new Date();
+  const owner = crypto.randomUUID();
+  const [claimed] = await db.update(schedulerSettings).set({
+    leaseOwner: owner,
+    leaseExpiresAt: new Date(now.getTime() + RUN_LEASE_MS),
+    stopRequested: false,
+    lastRunAt: now,
+    lastRunStatus: "running",
+    totalRuns: sql`${schedulerSettings.totalRuns} + 1`,
+    updatedAt: now,
+  }).where(and(
+    eq(schedulerSettings.id, 1),
+    options.force ? undefined : eq(schedulerSettings.enabled, true),
+    or(isNull(schedulerSettings.leaseOwner), lte(schedulerSettings.leaseExpiresAt, now)),
+    options.force ? undefined : or(isNull(schedulerSettings.nextRunAt), lte(schedulerSettings.nextRunAt, now)),
+  )).returning();
+  if (!claimed) return { status: "skipped", reason: "Another cycle is running or the next run is not due." };
+
+  let result: RunResult = { status: "failed" };
+  try {
+    // A terminated invocation may leave a run marked running after its lease expires.
+    await db.update(autonomousRuns).set({
+      status: "failed", error: "Execution lease expired before completion.", completedAt: now,
+    }).where(eq(autonomousRuns.status, "running"));
+
+    const cycle = await executeCycle(config, {
+      shouldStop: async () => {
+        const [current] = await db.select().from(schedulerSettings).where(eq(schedulerSettings.id, 1));
+        return !current || current.leaseOwner !== owner || current.stopRequested ||
+          !current.leaseExpiresAt || current.leaseExpiresAt <= new Date();
+      },
+    });
+    result = { status: cycle.status === "running" ? "failed" : cycle.status, cycle };
+    return result;
+  } catch (error) {
+    console.error("[Scheduler] Cycle failed:", error);
+    result = { status: "failed", reason: "Cycle execution failed. Check server logs." };
+    return result;
+  } finally {
+    const consecutiveErrors = result.status === "failed" ? claimed.consecutiveErrors + 1 : 0;
+    const nextRunAt = isVercel() ? nextVercelRun()
+      : new Date(Date.now() + claimed.intervalMinutes * 60_000 * (1 << Math.min(consecutiveErrors, 4)));
+    await db.update(schedulerSettings).set({
+      leaseOwner: null,
+      leaseExpiresAt: null,
+      lastRunStatus: result.status,
+      consecutiveErrors,
+      nextRunAt: sql`CASE WHEN ${schedulerSettings.enabled} THEN ${nextRunAt.toISOString()}::timestamp ELSE NULL END`,
+      updatedAt: new Date(),
+    }).where(and(eq(schedulerSettings.id, 1), eq(schedulerSettings.leaseOwner, owner)));
+    if (!isVercel()) await ensureSchedulerRunning();
+  }
+}
+
+function clearLocalTimer() {
+  if (globalForTimer.__zeroGravitySchedulerTimer) clearTimeout(globalForTimer.__zeroGravitySchedulerTimer);
+  delete globalForTimer.__zeroGravitySchedulerTimer;
+}
+
+export async function ensureSchedulerRunning(): Promise<void> {
+  if (isVercel()) return;
+  const status = await getStatus();
+  if (!status.enabled) { clearLocalTimer(); return; }
+  if (status.cycleActive || globalForTimer.__zeroGravitySchedulerTimer) return;
+  const delay = Math.max(0, new Date(status.nextRunAt || Date.now()).getTime() - Date.now());
+  globalForTimer.__zeroGravitySchedulerTimer = setTimeout(() => {
+    delete globalForTimer.__zeroGravitySchedulerTimer;
+    runOnce().catch((error) => console.error("[Scheduler] Local run failed:", error));
+  }, delay);
+  globalForTimer.__zeroGravitySchedulerTimer.unref();
 }
