@@ -108,7 +108,7 @@ describe("autonomous customer-payment workflow", () => {
   });
   it("does not offer checkout or send mail to guessed contacts", async () => {
     await targets("one-business.test");
-    vi.mocked(findContact).mockResolvedValueOnce({ email: "info@one-business.test", contactName: null, contactRole: null, source: "pattern", confidence: "low" });
+    vi.mocked(findContact).mockResolvedValueOnce({ email: "info@one-business.test", contactName: null, contactRole: null, source: "none", confidence: "low" });
     await runOnce({ force: true });
     expect(await db.select().from(opportunities)).toHaveLength(0);
     expect(checkoutMock).not.toHaveBeenCalled();
