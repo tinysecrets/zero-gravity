@@ -3,6 +3,7 @@ import { ensureDbInitialized } from "@/lib/db-seed";
 import { db } from "@/db";
 import { scanTargets } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { publicBusinessDomain } from "@/lib/public-domain";
 
 export const dynamic = "force-dynamic";
 
@@ -24,9 +25,9 @@ export async function POST(request: Request) {
   try {
     await ensureDbInitialized();
     const body = await request.json();
-    const domain = String(body.domain || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+    const domain = publicBusinessDomain(String(body.domain || ""));
 
-    if (!domain || domain.length < 4) {
+    if (!domain) {
       return NextResponse.json({ success: false, error: "Valid domain required." }, { status: 400 });
     }
 

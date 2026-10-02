@@ -1,6 +1,7 @@
 import { db } from "@/db";
 import { scanTargets } from "@/db/schema";
-import { sql } from "drizzle-orm";
+import { publicBusinessDomain } from "./public-domain";
+import { and, eq, isNull } from "drizzle-orm";
 
 // ---------------------------------------------------------------------------
 // Prospect Acquisition Engine
@@ -13,6 +14,7 @@ import { sql } from "drizzle-orm";
 export interface AcquisitionResult {
   source: string;
   query: string;
+  sourceUrl: string | null;
   domainsFound: number;
   newInserted: number;
   duplicatesSkipped: number;
@@ -24,26 +26,32 @@ export interface AcquisitionResult {
  *
  * crt.sh indexes every SSL/TLS certificate issued by public CAs.
  * Searching for a niche keyword (e.g., "roofing", "dental") returns
- * domains that recently obtained certificates — a strong signal of
- * active businesses with email-sending infrastructure.
+ * observed hostnames, not proof of a business or a need. Website/contact
+ * verification and DNS qualification still happen before any offer.
  */
 export async function acquireFromCTLogs(
   nicheQuery: string,
   industry: string = "general",
   maxResults: number = 50
 ): Promise<AcquisitionResult> {
+  const url = `https://crt.sh/?q=%25${encodeURIComponent(nicheQuery)}%25&output=json`;
   const result: AcquisitionResult = {
     source: "ct_log",
     query: nicheQuery,
+    sourceUrl: url,
     domainsFound: 0,
     newInserted: 0,
     duplicatesSkipped: 0,
     errors: [],
   };
 
+  if (!Number.isInteger(maxResults) || maxResults < 1 || maxResults > 100) {
+    result.errors.push("maxResults must be an integer between 1 and 100.");
+    return result;
+  }
+
   try {
     // crt.sh supports LIKE queries on certificate common names
-    const url = `https://crt.sh/?q=%25${encodeURIComponent(nicheQuery)}%25&output=json`;
 
     const res = await fetch(url, {
       headers: { Accept: "application/json" },
@@ -55,50 +63,42 @@ export async function acquireFromCTLogs(
       return result;
     }
 
-    const entries: Array<{ name_value: string; common_name: string }> = await res.json();
-
-    // Extract unique root domains from certificate names
-    const rawDomains = new Set<string>();
-    for (const entry of entries) {
-      const names = (entry.name_value || entry.common_name || "").split("\n");
-      for (const name of names) {
-        const domain = extractRootDomain(name.trim());
-        if (domain && isValidDomain(domain)) {
-          rawDomains.add(domain);
-        }
-      }
-    }
+    const rawDomains = certificateDomains(await res.json(), url, nicheQuery);
 
     result.domainsFound = rawDomains.size;
 
     // Deduplicate against existing scan_targets
     const existingRows = await db
-      .select({ domain: scanTargets.domain })
+      .select({ id: scanTargets.id, domain: scanTargets.domain, source: scanTargets.source, sourceEvidence: scanTargets.sourceEvidence })
       .from(scanTargets);
 
-    const existingDomains = new Set(existingRows.map((r) => r.domain));
-    const newDomains = [...rawDomains]
+    const existingDomains = new Set(existingRows.map((r) => extractRootDomain(r.domain) || r.domain.toLowerCase()));
+    await retainObservedEvidence(existingRows, rawDomains, result);
+    const newDomains = [...rawDomains.keys()]
       .filter((d) => !existingDomains.has(d))
       .slice(0, maxResults);
 
-    result.duplicatesSkipped = rawDomains.size - newDomains.length;
+    result.duplicatesSkipped = [...rawDomains.keys()].filter((domain) => existingDomains.has(domain)).length;
 
     // Insert new prospects
     for (const domain of newDomains) {
       try {
-        await db
+        const inserted = await db
           .insert(scanTargets)
           .values({
             domain,
             niche: nicheQuery,
             industry,
             source: "ct_log",
+            sourceEvidence: rawDomains.get(domain),
             priority: 2, // medium priority for auto-discovered
             isActive: true,
           })
-          .onConflictDoNothing();
+          .onConflictDoNothing()
+          .returning({ id: scanTargets.id });
 
-        result.newInserted++;
+        if (inserted.length) result.newInserted++;
+        else result.duplicatesSkipped++;
       } catch (err) {
         result.errors.push(`Failed to insert ${domain}: ${err instanceof Error ? err.message : "unknown"}`);
       }
@@ -122,6 +122,7 @@ export async function importDomains(
   const result: AcquisitionResult = {
     source,
     query: niche,
+    sourceUrl: null,
     domainsFound: 0,
     newInserted: 0,
     duplicatesSkipped: 0,
@@ -138,19 +139,22 @@ export async function importDomains(
 
   for (const domain of uniqueDomains) {
     try {
-      await db
+      const inserted = await db
         .insert(scanTargets)
         .values({
           domain,
           niche,
           industry,
           source,
+          sourceEvidence: JSON.stringify({ source, domain, observedAt: new Date().toISOString() }),
           priority: 1,
           isActive: true,
         })
-        .onConflictDoNothing();
+        .onConflictDoNothing()
+        .returning({ id: scanTargets.id });
 
-      result.newInserted++;
+      if (inserted.length) result.newInserted++;
+      else result.duplicatesSkipped++;
     } catch (err) {
       result.errors.push(`Failed to insert ${domain}: ${err instanceof Error ? err.message : "unknown"}`);
     }
@@ -167,17 +171,24 @@ export async function discoverPortfolio(
   rootDomain: string,
   industry: string = "agency_portfolio"
 ): Promise<AcquisitionResult> {
+  const normalizedRoot = extractRootDomain(rootDomain);
+  const url = normalizedRoot ? `https://crt.sh/?q=%25.${encodeURIComponent(normalizedRoot)}&output=json` : null;
   const result: AcquisitionResult = {
     source: "portfolio",
     query: rootDomain,
+    sourceUrl: url,
     domainsFound: 0,
     newInserted: 0,
     duplicatesSkipped: 0,
     errors: [],
   };
 
+  if (!url || !normalizedRoot) {
+    result.errors.push("A valid public portfolio domain is required.");
+    return result;
+  }
+
   try {
-    const url = `https://crt.sh/?q=%25.${encodeURIComponent(rootDomain)}&output=json`;
     const res = await fetch(url, {
       headers: { Accept: "application/json" },
       signal: AbortSignal.timeout(15_000),
@@ -188,43 +199,39 @@ export async function discoverPortfolio(
       return result;
     }
 
-    const entries: Array<{ name_value: string; common_name: string }> = await res.json();
-
-    const rawDomains = new Set<string>();
-    for (const entry of entries) {
-      const names = (entry.name_value || entry.common_name || "").split("\n");
-      for (const name of names) {
-        const domain = extractRootDomain(name.trim());
-        if (domain && isValidDomain(domain) && domain.endsWith(rootDomain)) {
-          rawDomains.add(domain);
-        }
-      }
+    const rawDomains = certificateDomains(await res.json(), url, normalizedRoot);
+    for (const domain of rawDomains.keys()) {
+      if (domain !== normalizedRoot && !domain.endsWith(`.${normalizedRoot}`)) rawDomains.delete(domain);
     }
 
     result.domainsFound = rawDomains.size;
 
     const existingRows = await db
-      .select({ domain: scanTargets.domain })
+      .select({ id: scanTargets.id, domain: scanTargets.domain, source: scanTargets.source, sourceEvidence: scanTargets.sourceEvidence })
       .from(scanTargets);
 
-    const existingDomains = new Set(existingRows.map((r) => r.domain));
-    const newDomains = [...rawDomains].filter((d) => !existingDomains.has(d));
-    result.duplicatesSkipped = rawDomains.size - newDomains.length;
+    const existingDomains = new Set(existingRows.map((r) => extractRootDomain(r.domain) || r.domain.toLowerCase()));
+    await retainObservedEvidence(existingRows, rawDomains, result);
+    const newDomains = [...rawDomains.keys()].filter((d) => !existingDomains.has(d));
+    result.duplicatesSkipped = [...rawDomains.keys()].filter((domain) => existingDomains.has(domain)).length;
 
     for (const domain of newDomains) {
       try {
-        await db
+        const inserted = await db
           .insert(scanTargets)
           .values({
             domain,
-            niche: `Portfolio: ${rootDomain}`,
+            niche: `Portfolio: ${normalizedRoot}`,
             industry,
             source: "portfolio",
+            sourceEvidence: rawDomains.get(domain),
             priority: 1,
             isActive: true,
           })
-          .onConflictDoNothing();
-        result.newInserted++;
+          .onConflictDoNothing()
+          .returning({ id: scanTargets.id });
+        if (inserted.length) result.newInserted++;
+        else result.duplicatesSkipped++;
       } catch (err) {
         result.errors.push(`Failed to insert ${domain}: ${err instanceof Error ? err.message : "unknown"}`);
       }
@@ -241,41 +248,46 @@ export async function discoverPortfolio(
 // ---------------------------------------------------------------------------
 
 function extractRootDomain(input: string): string | null {
-  if (!input) return null;
-  // Remove wildcards, protocols, paths, ports
-  let d = input
-    .replace(/^\*\./, "")
-    .replace(/^https?:\/\//, "")
-    .replace(/\/.*$/, "")
-    .replace(/:.*$/, "")
-    .trim()
-    .toLowerCase();
-
-  // Skip obviously invalid entries
-  if (!d || d.includes("%") || d.includes(" ") || d.length < 4) return null;
-
-  // If it has a subdomain with many parts, try to get the root
-  // But keep two-part TLDs intact (co.uk, com.au, etc.)
-  const parts = d.split(".");
-  if (parts.length > 2) {
-    // Heuristic: if the second-to-last part is a known TLD prefix, keep 3 parts
-    const knownMultiPart = ["co", "com", "org", "net", "gov", "edu", "ac"];
-    if (parts.length >= 3 && knownMultiPart.includes(parts[parts.length - 2])) {
-      return parts.slice(-3).join(".");
-    }
-    return parts.slice(-2).join(".");
-  }
-
-  return d;
+  return publicBusinessDomain(input);
 }
 
 function isValidDomain(domain: string): boolean {
-  return (
-    domain.length >= 4 &&
-    domain.includes(".") &&
-    !domain.startsWith(".") &&
-    !domain.endsWith(".") &&
-    !domain.includes("..") &&
-    /^[a-z0-9.-]+$/.test(domain)
-  );
+  return publicBusinessDomain(domain) === domain;
+}
+
+function certificateDomains(entries: unknown, sourceUrl: string, query: string): Map<string, string> {
+  if (!Array.isArray(entries)) throw new Error("crt.sh did not return a certificate list.");
+  const domains = new Map<string, string>();
+  for (const entry of entries) {
+    if (!entry || typeof entry !== "object") continue;
+    const names = typeof entry.name_value === "string" && entry.name_value ? entry.name_value
+      : typeof entry.common_name === "string" ? entry.common_name : "";
+    for (const name of names.split("\n")) {
+      if (/[/?:@#]/.test(name)) continue; // Certificate SANs must be hostnames, not URLs.
+      const domain = extractRootDomain(name);
+      if (!domain || domains.has(domain)) continue;
+      const certificateId = /^\d+$/.test(String(entry.id ?? "")) ? String(entry.id) : null;
+      domains.set(domain, JSON.stringify({
+        sourceUrl, query, certificateName: name.trim(), certificateId,
+        certificateUrl: certificateId ? `https://crt.sh/?id=${certificateId}` : null,
+        observedAt: new Date().toISOString(),
+      }));
+    }
+  }
+  return domains;
+}
+
+async function retainObservedEvidence(
+  rows: Array<{ id: number; domain: string; source: string; sourceEvidence: string | null }>,
+  observed: Map<string, string>, result: AcquisitionResult,
+): Promise<void> {
+  for (const row of rows) {
+    const evidence = observed.get(extractRootDomain(row.domain) || row.domain);
+    if (!evidence || row.sourceEvidence || !["ct_log", "portfolio"].includes(row.source)) continue;
+    try {
+      // Backfill only evidence genuinely observed now; never invent legacy provenance.
+      await db.update(scanTargets).set({ sourceEvidence: evidence })
+        .where(and(eq(scanTargets.id, row.id), isNull(scanTargets.sourceEvidence)));
+    } catch { result.errors.push(`Could not retain observed acquisition evidence for ${row.domain}.`); }
+  }
 }

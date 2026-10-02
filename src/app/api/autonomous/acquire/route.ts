@@ -29,6 +29,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: "Query is required." }, { status: 400 });
     }
 
+    const maxResults = body.maxResults === undefined ? 50 : body.maxResults;
+    if (typeof maxResults !== "number" || !Number.isInteger(maxResults) || maxResults < 1 || maxResults > 100) {
+      return NextResponse.json({ success: false, error: "maxResults must be an integer between 1 and 100." }, { status: 400 });
+    }
     let result;
 
     switch (mode) {
@@ -36,7 +40,7 @@ export async function POST(request: Request) {
         result = await acquireFromCTLogs(
           query,
           body.industry || "general",
-          Number(body.maxResults) || 50
+          maxResults
         );
         break;
 

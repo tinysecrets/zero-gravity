@@ -25,6 +25,7 @@ export const opportunities = pgTable("opportunities", {
   offerTier: text("offer_tier").default("remediation"), // remediation ($350) | implementation ($1.5K-$3K) | monitoring ($199-$299/mo)
   monthlyPrice: numeric("monthly_price", { precision: 10, scale: 2 }),
   acquisitionSource: text("acquisition_source").default("manual"), // manual | ct_log | portfolio | advisor
+  autonomousDomain: text("autonomous_domain").unique(), // durable deduplication for autonomous deals; legacy/manual rows are untouched
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -99,6 +100,7 @@ export const scanTargets = pgTable("scan_targets", {
   niche: text("niche").notNull().default("B2B Services"),
   industry: text("industry"),               // feedback-loop dimension
   source: text("source").notNull().default("manual"), // manual | ct_log | portfolio | csv_import
+  sourceEvidence: text("source_evidence"), // public acquisition URL/certificate evidence, JSON
   isActive: boolean("is_active").notNull().default(true),
   priority: integer("priority").notNull().default(1),
   lastAuditedAt: timestamp("last_audited_at"),

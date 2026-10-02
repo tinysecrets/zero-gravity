@@ -1,6 +1,6 @@
 # Zero Gravity
 
-A Next.js/PostgreSQL workflow for auditing reviewed prospects, drafting service offers, generating customer-approved Stripe Checkout payments, and recording signed payment events. **It does not transfer funds out, make bank payouts, guarantee revenue, or perform customer DNS changes.** A checkout link is not a payment; a confirmed card payment is not a confirmed bank payout. The ledger records gross confirmed receipts, not an available account balance; provider fees, refunds, and disputes are not automatically reconciled.
+A Next.js/PostgreSQL workflow for discovering public business domains, verifying published business contacts, auditing DNS, drafting service offers, generating customer-approved Stripe Checkout payments, and recording signed payment events. **It does not transfer funds out, make bank payouts, guarantee revenue, or perform customer DNS changes.** A checkout link is not a payment; a confirmed card payment is not a confirmed bank payout. The ledger records gross confirmed receipts, not an available account balance; provider fees, refunds, and disputes are not automatically reconciled.
 
 ## Enable autonomous collection on the existing Vercel project
 
@@ -28,7 +28,7 @@ Generate independent random values for the dashboard password and cron secret, f
    - `checkout.session.expired`
 3. Set the matching Stripe secret/signing keys in Vercel. Test keys and test events **never count as real revenue**. Use an isolated test/preview database, not your production database.
 4. Deploy the updated code to **Production** on the existing Vercel project, with Fluid compute enabled and a 300-second function duration available. Environment changes require a redeployment. A Git branch preview alone does not activate production cron jobs.
-5. Sign in to the dashboard using HTTP Basic Auth. In **Revenue Engine**, add or import reviewed, relevant public business domains. Fresh production databases do not contain sample prospects. Review existing targets on upgraded databases as well.
+5. Sign in to the dashboard using HTTP Basic Auth. **No contact list is required.** Every enabled cycle uses the existing public Certificate Transparency acquisition engine with a rotating business-niche query, deduplicates observed domains, and saves the source URL/certificate evidence. Certificates are candidates, not proof of a business or a paid need. Only a published same-business-domain contact with official website URL and non-null MX evidence can advance to an offer. Optional manual domain imports remain available. Fresh production databases contain no sample prospects.
 6. Inspect the readiness checklist. For a first immediate run, use **Run Single Cycle**. Otherwise the next Vercel Cron invocation runs automatically without a browser visit.
 7. Enable email only after the sender/contact/service checks below. Customers must choose to pay on Stripe's hosted checkout before signed live events enter the verified ledger.
 8. Link your bank and manage payout schedules **in your Stripe Dashboard**. No bank linking, payout, transfer, automatic debit, or trading API is called by this app.
@@ -41,7 +41,10 @@ Automatic sending is a separate opt-in from drafting. Configure:
 - `FROM_EMAIL`: a sender on a domain you have verified with Resend
 - `OUTREACH_REPLY_TO`: a monitored mailbox for replies and unsubscribe requests
 - `OUTREACH_POSTAL_ADDRESS`: the sender's valid postal address included in commercial emails
+- `OUTREACH_COMPLIANCE_CONFIRMED=true`: explicit operator confirmation that the reply/opt-out mailbox is monitored and the postal address is a real business address. The software cannot independently prove either fact; do not confirm them until verified.
 - `OUTREACH_TEST_RECIPIENT`: your own inbox for test-mode emails; test checkout links are never emailed to prospects
+
+Resend credentials must permit read-only domain verification: before sending, the app checks that the exact `FROM_EMAIL` domain is verified and sending-enabled in Resend. It also retrieves the saved Stripe session to verify that checkout is open and matches the invoice and configured mode. Provider verification failures withhold email without claiming a delivery attempt. These checks do not replace the separate explicit **Send email** authorization.
 
 Review recipients and your legal/compliance obligations before enabling commercial outreach. Honor opt-outs promptly by pausing automation and deactivating the relevant target; no automated follow-up campaign is implemented. Offers use observed public DNS findings, not invented lost revenue, fabricated lead-capture faults, or guaranteed inbox placement. Guessed addresses such as `info@domain` are not eligible for automatic offers. You are responsible for agreeing scope and delivering any purchased service.
 
@@ -51,7 +54,7 @@ A durable delivery claim prevents parallel sends. An interrupted or uncertain se
 
 `vercel.json` schedules `/api/autonomous/cron` **daily at 13:00 UTC** (`0 13 * * *`). This matches Vercel Hobby's daily cron restriction; Hobby execution can occur in the 13:00–13:59 UTC window. More frequent production jobs require a suitable Vercel plan and coordinated changes to both `vercel.json` and `src/lib/automation-config.ts`/the dashboard schedule description. See [Vercel cron usage and limits](https://vercel.com/docs/cron-jobs/usage-and-pricing) and [function duration configuration](https://vercel.com/docs/functions/configuring-functions/duration).
 
-Configuration, pause state, run counters, due times, and an execution lease live in PostgreSQL. Bootstrap environment flags initialize only a **new** settings row. On an existing database, use the dashboard to enable/configure the scheduler; redeploying or visiting a page does not undo Pause. `AUTONOMOUS_ENABLED=false` is an emergency runtime kill switch, including manual cycles; remove it or set `true` to allow running again. Preview deployments do not run automatic scheduled cycles.
+Configuration, pause state, run counters, due times, and an execution lease live in PostgreSQL. Run history is created before acquisition; acquisition results/errors and cycle steps/counters are persisted together. A failed source or prospect is recorded while the remaining batch continues. Bootstrap environment flags initialize only a **new** settings row. On an existing database, use the dashboard to enable/configure the scheduler; redeploying or visiting a page does not undo Pause. `AUTONOMOUS_ENABLED=false` is an emergency runtime kill switch, including manual cycles; remove it or set `true` to allow running again. Preview deployments do not run automatic scheduled cycles.
 
 On Vercel, **Enable Vercel Cron** saves configuration and waits for cron; it does not launch a detached serverless task. Manual and cron cycles are awaited, bounded to a batch of up to 10 domains (default 5) and a 240-second work budget with cleanup headroom. The database lease prevents overlap across instances. Remaining/failed targets rotate into subsequent runs. Stop/Pause is checked between steps; an already in-flight provider call cannot be undone.
 
@@ -70,6 +73,13 @@ npm test
 npm run build
 ```
 
-Tests use an isolated in-memory PostgreSQL-compatible PGlite database and mocked external providers. They do not contact prospects or move funds. `GET /api/health` reports database connectivity and bootstrap environment readiness without exposing credential values; the Revenue Engine dashboard shows readiness for the persisted configuration. Database initialization creates/updates tables idempotently and has no job-start or email-send side effects.
+Tests use an isolated in-memory PostgreSQL-compatible PGlite database and mocked external providers. They do not contact prospects or move funds. `GET /api/health` read-only checks the columns required by the scheduler, runs, targets, opportunities, invoices, revenue events, and transaction ledger, as well as database connectivity and bootstrap environment readiness, without exposing credential values; the Revenue Engine dashboard shows readiness for the persisted configuration. Database initialization creates/updates tables idempotently and has no job-start or email-send side effects.
 
 On a persistent non-Vercel server, an in-process timer can be explicitly enabled from the dashboard. Vercel never relies on that timer. Local example data is opt-in via `SEED_DEMO_DATA=true`; it is not used as automatic scan targets.
+
+## Production verification (not a revenue claim)
+
+- A successful build or `vercel.json` cron entry does not prove a production invocation. Confirm the deployment SHA/environment in Vercel, then inspect authenticated `/api/autonomous/schedule`, `/api/autonomous/history`, and `/api/autonomous/cycle` and the actual cron execution logs.
+- `/api/health` must report `database: "connected"` and `schema.ready: true`. The existing idempotent initialization applies additive schema changes on an authenticated application/cron request, preserving existing records; health itself does not migrate or seed anything.
+- For an actual cron run, verify the persisted run ID, acquisition result/errors, completed/failed/stopped state and timestamp, cycle counters, released lease, and next daily due time. Do not bypass dashboard or cron authentication to inspect these.
+- Verified revenue requires an actual customer-authorized live Stripe payment, a matching signed live webhook, and the linked payment request, verified transaction, and `payment_verified` attribution event. Tests and checkout creation alone are not revenue verification.

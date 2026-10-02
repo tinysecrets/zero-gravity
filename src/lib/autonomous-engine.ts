@@ -1,14 +1,16 @@
 import { runDomainAudit, type AuditResult } from "./audit-engine";
 import { sendOutreach } from "./email-outreach";
-import { findContact } from "./contact-finder";
+import { findContact, isVerifiedBusinessContact } from "./contact-finder";
+import { acquireFromCTLogs, type AcquisitionResult } from "./prospect-acquisition";
+import { publicBusinessDomain } from "./public-domain";
 import { createPaymentCheckout } from "./payment-checkout";
 import { CYCLE_BUDGET_MS, defaultCycleConfig, parseCycleConfig, type CycleConfig } from "./automation-config";
 import { db } from "@/db";
 import { opportunities, scanTargets, autonomousRuns, revenueEvents } from "@/db/schema";
-import { and, eq, ne, sql } from "drizzle-orm";
+import { and, eq, ne, or, sql } from "drizzle-orm";
 
 export type { CycleConfig } from "./automation-config";
-export type StepType = "scan" | "audit" | "decide" | "deal_created" | "outreach_generated" | "checkout_created" | "skipped";
+export type StepType = "acquisition" | "scan" | "audit" | "decide" | "deal_created" | "outreach_generated" | "checkout_created" | "skipped";
 
 export interface CycleStep {
   type: StepType;
@@ -43,6 +45,7 @@ export interface CycleState {
   config: CycleConfig;
   steps: CycleStep[];
   summary: CycleSummary;
+  acquisition?: AcquisitionResult;
   error?: string;
 }
 
@@ -64,6 +67,7 @@ function priceForTier(tier: string, audit: AuditResult): number {
 // Called only through the scheduler's database-backed execution lease.
 export async function executeCycle(config: Partial<CycleConfig> = {}, options: {
   shouldStop?: () => Promise<boolean>;
+  acquisition?: { query: string; industry: string; maxResults: number };
 } = {}): Promise<CycleState> {
   const fullConfig = { ...defaultCycleConfig(), ...parseCycleConfig(config) };
   const deadline = Date.now() + CYCLE_BUDGET_MS;
@@ -79,12 +83,29 @@ export async function executeCycle(config: Partial<CycleConfig> = {}, options: {
       id: state.id, status: "running", ...fullConfig,
       details: JSON.stringify({ steps: [], config: fullConfig }),
     });
+    // The run exists before discovery starts, so source failures and terminated
+    // invocations are visible in the same durable history as the business cycle.
+    if (options.acquisition && !await shouldStop()) {
+      const { query, industry, maxResults } = options.acquisition;
+      try {
+        state.acquisition = await acquireFromCTLogs(query, industry, maxResults);
+      } catch (error) {
+        state.acquisition = {
+          source: "ct_log", query, sourceUrl: `https://crt.sh/?q=%25${encodeURIComponent(query)}%25&output=json`,
+          domainsFound: 0, newInserted: 0, duplicatesSkipped: 0,
+          errors: [error instanceof Error ? error.message : "Discovery source unavailable."],
+        };
+      }
+      addStep(state, { type: "acquisition", domain: "(discovery)",
+        message: `CT discovery (${query}): ${state.acquisition.newInserted} new candidates, ${state.acquisition.duplicatesSkipped} duplicates. ${state.acquisition.errors.join(" ")}` });
+      await persistRun(state);
+    }
     const targets = await db.select().from(scanTargets)
       .where(and(eq(scanTargets.isActive, true), ne(scanTargets.source, "demo")))
       // Rotate bounded batches so the same high-priority domains cannot starve others.
       .orderBy(sql`${scanTargets.lastAuditedAt} ASC NULLS FIRST`, scanTargets.priority, scanTargets.id)
       .limit(fullConfig.maxDomainsPerCycle);
-    if (!targets.length) addStep(state, { type: "skipped", domain: "(none)", message: "No active targets. Add reviewed prospects in the dashboard to begin." });
+    if (!targets.length) addStep(state, { type: "skipped", domain: "(none)", message: "No active candidates available this cycle. Public discovery will run again on the next scheduled cycle; no contact list is required." });
 
     for (const target of targets) {
       if (await shouldStop()) {
@@ -98,7 +119,13 @@ export async function executeCycle(config: Partial<CycleConfig> = {}, options: {
         addStep(state, { type: "skipped", domain: target.domain, message: "Batch budget reached. Remaining targets will be picked up next run." });
         break;
       }
-      await processDomain(state, target, shouldStop);
+      try {
+        await processDomain(state, { ...target, domain: publicBusinessDomain(target.domain) || target.domain }, shouldStop);
+      } catch (error) {
+        addStep(state, { type: "skipped", domain: target.domain,
+          message: `Prospect processing failed; continuing the batch: ${error instanceof Error ? error.message : "unknown error"}` });
+        await db.update(scanTargets).set({ lastAuditedAt: new Date() }).where(eq(scanTargets.id, target.id));
+      }
       await persistRun(state);
     }
     if (state.status === "running") state.status = await shouldStop() ? "stopped" : "completed";
@@ -131,7 +158,9 @@ async function processDomain(state: CycleState, target: Target, shouldStop: () =
   await db.update(scanTargets).set({ lastAuditedAt: new Date(), lastScore: audit.score }).where(eq(scanTargets.id, target.id));
   if (await shouldStop()) return;
 
-  const [existing] = await db.select().from(opportunities).where(eq(opportunities.targetCompany, domain)).limit(1);
+  const [existing] = await db.select().from(opportunities).where(or(
+    eq(opportunities.autonomousDomain, domain), sql`LOWER(BTRIM(${opportunities.targetCompany})) IN (${domain.toLowerCase()}, ${`www.${domain.toLowerCase()}`})`,
+  )).limit(1);
   const actionable = audit.score < config.scoreThreshold;
   if (existing) {
     const metadata = existing.auditData ? JSON.parse(existing.auditData) : {};
@@ -150,7 +179,7 @@ async function processDomain(state: CycleState, target: Target, shouldStop: () =
   if (!config.autoCreateDeals) return;
   const contact = await findContact(domain);
   // A guessed info@ address is not a verified contact and must not receive automation.
-  if (!contact.email || contact.source !== "website" || contact.confidence !== "high") {
+  if (!isVerifiedBusinessContact(contact, domain)) {
     addStep(state, { type: "skipped", domain, message: "No verified public contact found. Guessed email addresses are not used for automated offers." });
     return;
   }
@@ -168,10 +197,18 @@ async function processDomain(state: CycleState, target: Target, shouldStop: () =
     auditData: JSON.stringify({
       score: audit.score, grade: audit.grade, findings: audit.findings,
       contactEmail: contact.email, contactName: contact.contactName,
-      contactSource: contact.source, contactConfidence: contact.confidence, automatedCycleId: state.id,
+      contactSource: contact.source, contactConfidence: contact.confidence, contactEvidence: contact,
+      acquisitionEvidence: target.sourceEvidence ? JSON.parse(target.sourceEvidence) : null,
+      auditObservedAt: new Date().toISOString(), auditSourceUrl: "https://cloudflare-dns.com/dns-query",
+      dmarcPresent: audit.dmarcPresent, dmarcPolicy: audit.dmarcPolicy, spfRecord: audit.spfRecord, mxRecords: audit.mxRecords,
+      automatedCycleId: state.id,
     }),
-    offerTier: tier, acquisitionSource: target.source,
-  }).returning();
+    offerTier: tier, acquisitionSource: target.source, autonomousDomain: domain,
+  }).onConflictDoNothing({ target: opportunities.autonomousDomain }).returning();
+  if (!deal) {
+    addStep(state, { type: "skipped", domain, message: "An autonomous opportunity already exists; duplicate suppressed by the database." });
+    return;
+  }
   state.summary.dealsCreated++;
   state.summary.totalEstimatedValue += price;
   await db.update(scanTargets).set({ lastDealId: deal.id }).where(eq(scanTargets.id, target.id));
@@ -183,7 +220,21 @@ async function processDomain(state: CycleState, target: Target, shouldStop: () =
 async function fulfillDeal(state: CycleState, deal: Deal, audit: AuditResult, target: Target, shouldStop: () => Promise<boolean>): Promise<void> {
   const { domain } = target;
   const config = state.config;
-  const metadata = deal.auditData ? JSON.parse(deal.auditData) : {};
+  let metadata = deal.auditData ? JSON.parse(deal.auditData) : {};
+  // Reverify recipients when resuming a prior run, including legacy drafts without evidence.
+  if (!isVerifiedBusinessContact(metadata.contactEvidence, domain) || metadata.contactEvidence.email !== deal.targetEmail ||
+    Date.parse(metadata.contactEvidence.verifiedAt!) < Date.parse(state.startedAt)) {
+    const contact = await findContact(domain);
+    if (!isVerifiedBusinessContact(contact, domain) || contact.email !== deal.targetEmail) {
+      addStep(state, { type: "skipped", domain, dealId: deal.id, message: "Saved recipient could not be reverified on the business website; checkout and outreach withheld." });
+      return;
+    }
+    metadata = { ...metadata, contactEvidence: contact, contactSource: contact.source, contactConfidence: contact.confidence,
+      acquisitionEvidence: metadata.acquisitionEvidence || (target.sourceEvidence ? JSON.parse(target.sourceEvidence) : null) };
+    deal.auditData = JSON.stringify(metadata);
+    await db.update(opportunities).set({ auditData: deal.auditData, updatedAt: new Date() }).where(eq(opportunities.id, deal.id));
+  }
+  if (await shouldStop()) return;
   if (config.autoGenerateOutreach && deal.outreachDeliveryStatus === "draft" &&
     (!deal.outreachMessage || metadata.outreachCopyVersion !== "dns-v1")) {
     const outreachMessage = buildOfferOutreach(domain, audit, deal, metadata.contactName);
@@ -219,11 +270,11 @@ async function fulfillDeal(state: CycleState, deal: Deal, audit: AuditResult, ta
   }
   if (await shouldStop()) return;
   if (config.autoSendOutreach && deal.outreachMessage && checkoutUrl) {
-    if (metadata.contactSource !== "website" || metadata.contactConfidence !== "high") {
+    if (!isVerifiedBusinessContact(metadata.contactEvidence, domain) || metadata.contactEvidence.email !== deal.targetEmail) {
       addStep(state, { type: "skipped", domain, dealId: deal.id, message: "Outreach withheld: the saved contact needs verification." });
       return;
     }
-    const result = await sendOutreach(deal.id);
+    const result = await sendOutreach(deal.id, { authorized: config.autoSendOutreach, shouldStop });
     addStep(state, { type: "outreach_generated", domain, dealId: deal.id,
       message: result.sent ? `Email delivered to provider for ${result.recipientEmail}.` : result.error || "Email withheld." });
   }
@@ -241,7 +292,7 @@ function addStep(state: CycleState, step: Omit<CycleStep, "timestamp">): void {
 async function persistRun(state: CycleState): Promise<void> {
   await db.update(autonomousRuns).set({
     status: state.status, ...state.summary, totalEstimatedValue: state.summary.totalEstimatedValue.toFixed(2),
-    details: JSON.stringify({ steps: state.steps, config: state.config }), error: state.error || null,
+    details: JSON.stringify({ steps: state.steps, config: state.config, acquisition: state.acquisition }), error: state.error || null,
     completedAt: state.completedAt ? new Date(state.completedAt) : null,
   }).where(eq(autonomousRuns.id, state.id));
 }

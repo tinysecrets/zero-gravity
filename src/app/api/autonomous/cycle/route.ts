@@ -23,6 +23,7 @@ export async function GET() {
           id: run.id, status: "running", startedAt: run.startedAt.toISOString(),
           config: details?.config || scheduler.cycleConfig,
           steps: details?.steps || [],
+          acquisition: details?.acquisition,
           summary: {
             domainsScanned: run.domainsScanned, opportunitiesFound: run.opportunitiesFound,
             dealsCreated: run.dealsCreated, outreachGenerated: run.outreachGenerated,

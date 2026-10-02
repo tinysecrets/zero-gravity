@@ -1,8 +1,7 @@
 import { db } from "@/db";
-import { autonomousRuns, schedulerSettings } from "@/db/schema";
+import { autonomousRuns, opportunities, schedulerSettings } from "@/db/schema";
 import { and, eq, isNull, lte, or, sql } from "drizzle-orm";
 import { ensureDbInitialized } from "./db-seed";
-import { acquireFromCTLogs } from "./prospect-acquisition";
 import { executeCycle, type CycleState } from "./autonomous-engine";
 import {
   automationReadiness,
@@ -167,27 +166,27 @@ export async function runOnce(options: {
 
   let result: RunResult = { status: "failed" };
   try {
-    // Acquire fresh public prospects automatically before every production cycle.
+    // Keep the existing rotating CT acquisition, inside the persisted cycle.
     const autonomousNiches = [
       ["roofing", "roofing"], ["dental", "dental"], ["hvac", "hvac"],
       ["plumbing", "plumbing"], ["landscaping", "landscaping"], ["legal", "legal"],
-      ["accounting", "accounting"], ["medspa", "medspa"], ["real estate", "real_estate"],
+      ["accounting", "accounting"], ["medspa", "medspa"], ["realestate", "real_estate"],
       ["insurance", "insurance"],
     ] as const;
     const niche = autonomousNiches[Math.floor(Date.now() / 86_400_000) % autonomousNiches.length];
-    try {
-      const acquisition = await acquireFromCTLogs(niche[0], niche[1], 25);
-      console.info("[Scheduler] Autonomous acquisition:", acquisition);
-    } catch (error) {
-      console.warn("[Scheduler] Autonomous acquisition skipped:", error);
-    }
-
     // A terminated invocation may leave a run marked running after its lease expires.
     await db.update(autonomousRuns).set({
       status: "failed", error: "Execution lease expired before completion.", completedAt: now,
     }).where(eq(autonomousRuns.status, "running"));
 
+    // A prior worker may have died after claiming an email. Never resend it.
+    await db.update(opportunities).set({ outreachDeliveryStatus: "needs_review", updatedAt: now }).where(and(
+      eq(opportunities.outreachDeliveryStatus, "sending"),
+      or(isNull(opportunities.outreachAttemptedAt), lte(opportunities.outreachAttemptedAt, now)),
+    ));
+
     const cycle = await executeCycle(config, {
+      acquisition: { query: niche[0], industry: niche[1], maxResults: 25 },
       shouldStop: async () => {
         const [current] = await db.select().from(schedulerSettings).where(eq(schedulerSettings.id, 1));
         return !current || current.leaseOwner !== owner || current.stopRequested ||

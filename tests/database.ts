@@ -18,7 +18,7 @@ export async function resetDatabase(overrides: Record<string, string> = {}) {
     VERCEL_PROJECT_PRODUCTION_URL: "", VERCEL_URL: "",
     AUTONOMOUS_ENABLED: "true", AUTONOMOUS_CREATE_CHECKOUT: "true", AUTONOMOUS_SEND_OUTREACH: "false",
     STRIPE_SECRET_KEY: "sk_test_local_fixture", STRIPE_WEBHOOK_SECRET: "whsec_local_fixture",
-    RESEND_API_KEY: "", FROM_EMAIL: "", OUTREACH_REPLY_TO: "", OUTREACH_POSTAL_ADDRESS: "", OUTREACH_TEST_RECIPIENT: "",
+    RESEND_API_KEY: "", FROM_EMAIL: "", OUTREACH_REPLY_TO: "", OUTREACH_POSTAL_ADDRESS: "", OUTREACH_TEST_RECIPIENT: "", OUTREACH_COMPLIANCE_CONFIRMED: "false",
     SEED_DEMO_DATA: "false", ...overrides,
   };
   for (const [key, value] of Object.entries(env)) vi.stubEnv(key, value);

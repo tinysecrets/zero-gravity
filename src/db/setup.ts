@@ -154,6 +154,9 @@ export const DATABASE_SETUP_SQL = `
       ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS offer_tier TEXT DEFAULT 'remediation';
       ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS monthly_price NUMERIC(10,2);
       ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS acquisition_source TEXT DEFAULT 'manual';
+      ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS autonomous_domain TEXT;
+      CREATE UNIQUE INDEX IF NOT EXISTS opportunities_autonomous_domain_unique ON opportunities (autonomous_domain);
+      ALTER TABLE scan_targets ADD COLUMN IF NOT EXISTS source_evidence TEXT;
       ALTER TABLE payment_requests ADD COLUMN IF NOT EXISTS livemode BOOLEAN NOT NULL DEFAULT false;
       UPDATE payment_requests SET livemode = true WHERE provider_session_id LIKE 'cs_live_%';
       ALTER TABLE autonomous_runs ADD COLUMN IF NOT EXISTS auto_send_outreach BOOLEAN NOT NULL DEFAULT false;

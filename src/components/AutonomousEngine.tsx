@@ -353,6 +353,7 @@ export function AutonomousEngine() {
 
   const stepIcon = (type: string) => {
     const icons: Record<string, React.ReactNode> = {
+      acquisition: <Search className="w-3.5 h-3.5 text-cyan-400" />,
       scan: <RefreshCw className="w-3.5 h-3.5 text-cyan-400" />,
       audit: <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />,
       decide: <Target className="w-3.5 h-3.5 text-amber-400" />,
@@ -454,7 +455,7 @@ export function AutonomousEngine() {
           Prospect Acquisition
         </h3>
         <p className="text-[11px] text-zinc-400">
-          You can import domains from a source you are authorized to use or review public certificate records. Source coverage, terms, rate limits, and costs vary; verify them before use. Added domains become scan targets, not verified prospects or customers.
+          Enabled cycles discover public certificate candidates automatically; no contact list is required. Optional imports must come from a source you are authorized to use. Source coverage, terms, rate limits, and costs vary; verify them before use. Added domains become scan targets, not verified prospects or customers.
         </p>
 
         <form onSubmit={handleAcquire} className="flex flex-wrap items-end gap-3">
@@ -680,7 +681,7 @@ export function AutonomousEngine() {
                 </tr>
               ))}
               {targets.length === 0 && (
-                <tr><td colSpan={8} className="py-8 text-center text-zinc-500">No scan targets. Use Prospect Acquisition or add domains manually.</td></tr>
+                <tr><td colSpan={8} className="py-8 text-center text-zinc-500">No scan targets yet. The next enabled cycle discovers public candidates automatically; no contact list is required.</td></tr>
               )}
             </tbody>
           </table>

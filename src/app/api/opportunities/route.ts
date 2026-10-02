@@ -35,6 +35,10 @@ export async function POST(request: Request) {
   try {
     await ensureDbInitialized();
     const body = await request.json();
+    if (body.status === "revenue_collected" ||
+      (body.realizedRevenue !== undefined && Number(body.realizedRevenue) !== 0)) {
+      return NextResponse.json({ success: false, error: "Cash collection can only be recorded by a verified payment provider event." }, { status: 403 });
+    }
 
     const newDeal = await db
       .insert(opportunities)
@@ -50,7 +54,7 @@ export async function POST(request: Request) {
         potentialValue: String(body.potentialValue || "1500"),
         operatorFeePercent: String(body.operatorFeePercent || "25.00"),
         grossTransactionValue: String(body.grossTransactionValue || "0"),
-        realizedRevenue: String(body.realizedRevenue || "0"),
+        realizedRevenue: "0.00",
         capitalSpent: "0.00",
         notes: body.notes || "",
         outreachMessage: body.outreachMessage || "",
