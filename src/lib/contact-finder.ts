@@ -39,8 +39,8 @@ export async function findContact(domain: string): Promise<ContactInfo> {
 
       const html = await res.text();
       const visibleHtml = html
-        .replace(/<script\\b[^>]*>[\\s\\S]*?<\\/script>/gi, " ")
-        .replace(/<style\\b[^>]*>[\\s\\S]*?<\\/style>/gi, " ");
+        .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+        .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ");
 
       const emails = extractEmails(visibleHtml, normalized);
       const person = extractDecisionMaker(visibleHtml);
@@ -82,7 +82,7 @@ function extractEmails(html: string, domain: string): string[] {
     const mailDomain = e.split("@").pop() || "";
     if (mailDomain !== domain && !mailDomain.endsWith(`.${domain}`)) return false;
     if (/example\\.com|test\\.com|sentry\\.io|wixpress/i.test(e)) return false;
-    if (/@\\d+x\\./i.test(e) || e.length > 60) return false;
+    if (/@\d+x\./i.test(e) || e.length > 60) return false;
     return true;
   }))];
 }
@@ -106,8 +106,8 @@ function prioritizeEmails(emails: string[]): string[] {
 
 function extractDecisionMaker(html: string): { name: string; role: string } | null {
   const patterns = [
-    /(?:founded?\\s+by|founder[:\\s]+|ceo[:\\s]+|owner[:\\s]+|president[:\\s]+)\\s*([A-Z][a-z]+\\s+[A-Z][a-z]+)/i,
-    /([A-Z][a-z]+\\s+[A-Z][a-z]+)[\\s,—–]+(?:founder|ceo|owner|president|principal)/i,
+    /(?:founded?\s+by|founder[:\s]+|ceo[:\s]+|owner[:\s]+|president[:\s]+)\s*([A-Z][a-z]+\s+[A-Z][a-z]+)/i,
+    /([A-Z][a-z]+\s+[A-Z][a-z]+)[\s,—–]+(?:founder|ceo|owner|president|principal)/i,
   ];
   for (const regex of patterns) {
     const match = html.match(regex);
@@ -122,6 +122,6 @@ function extractRole(html: string, name: string): string | null {
   const idx = html.indexOf(name);
   if (idx < 0) return null;
   const context = html.substring(Math.max(0, idx - 100), idx + 200);
-  const match = context.match(/(founder|ceo|owner|president|principal|managing\\s+partner|chief\\s+executive|head\\s+of\\s+growth|marketing\\s+director)/i);
+  const match = context.match(/(founder|ceo|owner|president|principal|managing\s+partner|chief\s+executive|head\s+of\s+growth|marketing\s+director)/i);
   return match?.[1] || null;
 }
