@@ -21,6 +21,7 @@ import { amountToCents, createPaymentCheckout } from "@/lib/payment-checkout";
 import { recordStripePayment } from "@/lib/payment-settlement";
 import { POST as webhook } from "@/app/api/payments/webhook/route";
 import { GET as getPayment } from "@/app/api/payments/route";
+import { POST as createOpportunity } from "@/app/api/opportunities/route";
 
 beforeAll(setupDatabase);
 beforeEach(async () => {
@@ -180,6 +181,14 @@ describe("signed webhook handling", () => {
     expect((await webhook(signedRequest(sessionFor(invoice)))).status).toBe(400);
     expect(await db.select().from(financialTransactions)).toHaveLength(0);
   });
+  it("rejects a signed event whose nested session mode disagrees with the configured event mode", async () => {
+    const invoice = await fixtureInvoice({ livemode: true });
+    const session = sessionFor(invoice);
+    const payload = JSON.stringify({ id: "evt_mode_mismatch_fixture", object: "event", type: "checkout.session.completed", livemode: false, data: { object: session } });
+    const signature = new Stripe("sk_test_local_fixture").webhooks.generateTestHeaderString({ payload, secret: "whsec_local_fixture" });
+    expect((await webhook(new Request("https://zero-gravity.test/api/payments/webhook", { method: "POST", headers: { "stripe-signature": signature }, body: payload }))).status).toBe(400);
+    expect(await db.select().from(financialTransactions)).toHaveLength(0);
+  });
   it("returns retriable 5xx for database failures, not signature failures", async () => {
     vi.stubEnv("STRIPE_SECRET_KEY", "sk_live_local_fixture");
     const invoice = await fixtureInvoice();
@@ -193,5 +202,21 @@ describe("signed webhook handling", () => {
     await recordStripePayment(sessionFor(invoice));
     expect((await webhook(signedRequest(sessionFor(invoice), "checkout.session.expired"))).status).toBe(200);
     expect((await db.select().from(paymentRequests))[0].status).toBe("paid");
+  });
+});
+
+
+describe("manual opportunity creation cannot book realized revenue", () => {
+  it.each([{ realizedRevenue: "350.00" }, { realizedRevenue: "NaN" }, { status: "revenue_collected" }])("rejects non-provider revenue input %s", async (fields) => {
+    const response = await createOpportunity(new Request("https://zero-gravity.test/api/opportunities", { method: "POST", body: JSON.stringify({ title: "Reviewed fixture", targetCompany: "business.test", ...fields }) }));
+    expect(response.status).toBe(403);
+    expect(await db.select().from(opportunities)).toHaveLength(0);
+    expect(await db.select().from(financialTransactions)).toHaveLength(0);
+  });
+
+  it("keeps ordinary manual opportunity creation at zero realized revenue", async () => {
+    const response = await createOpportunity(new Request("https://zero-gravity.test/api/opportunities", { method: "POST", body: JSON.stringify({ title: "Reviewed fixture", targetCompany: "business.test", realizedRevenue: "0" }) }));
+    expect(response.status).toBe(200);
+    expect((await db.select().from(opportunities))[0].realizedRevenue).toBe("0.00");
   });
 });

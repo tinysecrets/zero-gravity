@@ -44,6 +44,15 @@ describe("persistent Vercel scheduler", () => {
     expect((await runOnce()).status).toBe("skipped");
     expect(executeCycle).not.toHaveBeenCalled();
   });
+  it("bootstrap capability flags never reauthorize saved checkout/email opt-outs on a cold start", async () => {
+    await ensureDbInitialized();
+    await db.update(schedulerSettings).set({ autoCreateCheckout: false, autoSendOutreach: false });
+    vi.stubEnv("AUTONOMOUS_CREATE_CHECKOUT", "true"); vi.stubEnv("AUTONOMOUS_SEND_OUTREACH", "true");
+    delete (globalThis as typeof globalThis & { __zeroGravityDbInitialization?: unknown }).__zeroGravityDbInitialization;
+    await ensureDbInitialized();
+    expect((await getStatus()).cycleConfig).toMatchObject({ autoCreateCheckout: false, autoSendOutreach: false });
+    expect(executeCycle).not.toHaveBeenCalled();
+  });
   it("enables Vercel cron without launching detached work", async () => {
     await stopScheduler(); await startScheduler({ intervalMinutes: 5 });
     expect((await getStatus()).enabled).toBe(true);

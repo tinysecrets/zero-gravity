@@ -122,6 +122,9 @@ export function automationReadiness(config: CycleConfig): AutomationReadiness {
     if (!/^\S+@\S+\.\S+$/.test(process.env.FROM_EMAIL || "")) blockers.push("FROM_EMAIL must be your verified sender address.");
     if (!/^\S+@\S+\.\S+$/.test(process.env.OUTREACH_REPLY_TO || "")) blockers.push("OUTREACH_REPLY_TO must be a monitored opt-out mailbox.");
     if (!process.env.OUTREACH_POSTAL_ADDRESS?.trim()) blockers.push("OUTREACH_POSTAL_ADDRESS is required for outreach.");
+    if (process.env.OUTREACH_COMPLIANCE_CONFIRMED !== "true") {
+      blockers.push("OUTREACH_COMPLIANCE_CONFIRMED=true requires operator confirmation that the reply/opt-out mailbox is monitored and the postal address is a real business address.");
+    }
   }
   return { ready: blockers.length === 0, blockers, paymentMode };
 }

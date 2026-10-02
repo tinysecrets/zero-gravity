@@ -27,11 +27,14 @@ export async function POST(request: Request) {
   if (!["checkout.session.completed", "checkout.session.async_payment_succeeded", "checkout.session.expired"].includes(event.type)) {
     return NextResponse.json({ received: true });
   }
+  const session = event.data.object as Stripe.Checkout.Session;
+  if (session.livemode !== event.livemode || session.mode !== "payment") {
+    return NextResponse.json({ error: "Stripe session mode does not match the verified payment event." }, { status: 400 });
+  }
   try {
     // Only authenticated provider events may touch the database. Initialization
     // never starts the engine or sends email as a webhook side effect.
     await ensureDbInitialized();
-    const session = event.data.object as Stripe.Checkout.Session;
     if (event.type === "checkout.session.expired") {
       await db.update(paymentRequests).set({ status: "expired", updatedAt: new Date() }).where(and(
         eq(paymentRequests.providerSessionId, session.id), ne(paymentRequests.status, "paid"),
