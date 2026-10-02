@@ -2,6 +2,7 @@ import { db } from "@/db";
 import { autonomousRuns, schedulerSettings } from "@/db/schema";
 import { and, eq, isNull, lte, or, sql } from "drizzle-orm";
 import { ensureDbInitialized } from "./db-seed";
+import { acquireFromCTLogs } from "./prospect-acquisition";
 import { executeCycle, type CycleState } from "./autonomous-engine";
 import {
   automationReadiness,
@@ -166,6 +167,21 @@ export async function runOnce(options: {
 
   let result: RunResult = { status: "failed" };
   try {
+    // Acquire fresh public prospects automatically before every production cycle.
+    const autonomousNiches = [
+      ["roofing", "roofing"], ["dental", "dental"], ["hvac", "hvac"],
+      ["plumbing", "plumbing"], ["landscaping", "landscaping"], ["legal", "legal"],
+      ["accounting", "accounting"], ["medspa", "medspa"], ["real estate", "real_estate"],
+      ["insurance", "insurance"],
+    ] as const;
+    const niche = autonomousNiches[Math.floor(Date.now() / 86_400_000) % autonomousNiches.length];
+    try {
+      const acquisition = await acquireFromCTLogs(niche[0], niche[1], 25);
+      console.info("[Scheduler] Autonomous acquisition:", acquisition);
+    } catch (error) {
+      console.warn("[Scheduler] Autonomous acquisition skipped:", error);
+    }
+
     // A terminated invocation may leave a run marked running after its lease expires.
     await db.update(autonomousRuns).set({
       status: "failed", error: "Execution lease expired before completion.", completedAt: now,

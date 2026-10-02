@@ -3,7 +3,7 @@ import { opportunities, scanTargets, schedulerSettings } from "@/db/schema";
 import { DATABASE_SETUP_SQL } from "@/db/setup";
 import { INITIAL_OPPORTUNITIES, SEED_PLAYBOOKS } from "./seed-data";
 import { defaultCycleConfig, isVercel } from "./automation-config";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 const globalForInit = globalThis as typeof globalThis & {
   __zeroGravityDbInitialization?: Promise<{ success: true }>;
@@ -36,6 +36,16 @@ async function initialize(): Promise<{ success: true }> {
       intervalMinutes: isVercel() ? 1440 : 15,
       ...defaultCycleConfig(),
     }).onConflictDoNothing();
+
+    // Explicit production environment flags can activate capabilities on an existing
+    // scheduler row without overwriting dashboard-controlled settings that remain false.
+    const envCapabilityUpdates: Record<string, boolean> = {};
+    if (process.env.AUTONOMOUS_ENABLED === "true") envCapabilityUpdates.enabled = true;
+    if (process.env.AUTONOMOUS_CREATE_CHECKOUT === "true") envCapabilityUpdates.autoCreateCheckout = true;
+    if (process.env.AUTONOMOUS_SEND_OUTREACH === "true") envCapabilityUpdates.autoSendOutreach = true;
+    if (Object.keys(envCapabilityUpdates).length) {
+      await tx.update(schedulerSettings).set({ ...envCapabilityUpdates, updatedAt: new Date() }).where(eq(schedulerSettings.id, 1));
+    }
 
     // Playbooks are reference material; sample businesses are opt-in only.
     // Never turn fictional/sample data into real outreach on a fresh deployment.
