@@ -1,33 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
-import { sameOriginRequest, secretsEqual } from "@/lib/request-auth";
+import { sameOriginRequest } from "@/lib/request-auth";
 
-// Protect the operator dashboard/APIs, but leave hosted checkout callbacks public.
-// Cron and Stripe authenticate themselves in their route handlers.
+// Zero Gravity is intentionally operator-accessible without a browser login.
+// Provider callbacks remain public because Stripe/Vercel invoke them directly.
 export function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
-  const isPublic = path === "/api/health" || path === "/api/autonomous/cron" ||
-    path === "/api/payments/webhook" || path === "/payment/success" ||
-    (path === "/api/payments" && request.method === "GET" && request.nextUrl.searchParams.has("session_id"));
-  if (isPublic) return NextResponse.next();
 
-  const password = process.env.DASHBOARD_PASSWORD;
-  if (!password) {
-    if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) return NextResponse.next();
-    return NextResponse.json({ success: false, error: "Set DASHBOARD_PASSWORD before exposing the dashboard." }, { status: 503 });
-  }
-  const username = process.env.DASHBOARD_USERNAME || "admin";
-  const expected = `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
-  if (!secretsEqual(request.headers.get("authorization"), expected)) {
-    return new NextResponse("Operator authentication required.", {
-      status: 401,
-      headers: { "WWW-Authenticate": 'Basic realm="Zero Gravity", charset="UTF-8"', "Cache-Control": "no-store" },
-    });
+  const isProviderRoute =
+    path === "/api/health" ||
+    path === "/api/autonomous/cron" ||
+    path === "/api/payments/webhook" ||
+    path === "/payment/success" ||
+    (path === "/api/payments" &&
+      request.method === "GET" &&
+      request.nextUrl.searchParams.has("session_id"));
+
+  if (isProviderRoute) return NextResponse.next();
+
+  // No username/password challenge. Keep browser mutations same-origin so the
+  // public dashboard cannot be driven cross-origin by a malicious web page.
+  if (
+    !["GET", "HEAD", "OPTIONS"].includes(request.method) &&
+    !sameOriginRequest(request)
+  ) {
+    return NextResponse.json(
+      { success: false, error: "Cross-origin request rejected." },
+      { status: 403 },
+    );
   }
 
-  // Browser Basic Auth is ambient: reject cross-origin mutation requests (CSRF).
-  if (!["GET", "HEAD", "OPTIONS"].includes(request.method) && !sameOriginRequest(request)) {
-    return NextResponse.json({ success: false, error: "Cross-origin request rejected." }, { status: 403 });
-  }
   return NextResponse.next();
 }
 
