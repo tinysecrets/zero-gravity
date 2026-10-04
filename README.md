@@ -10,8 +10,6 @@ Configure these under **Vercel → Project → Settings → Environment Variable
 | --- | --- |
 | `DATABASE_URL` | Your PostgreSQL connection string, including the provider's SSL configuration. |
 | `APP_URL` | Public production HTTPS URL, e.g. `https://your-project.vercel.app`. Not localhost. |
-| `DASHBOARD_PASSWORD` | Strong password protecting the operator dashboard and management APIs. |
-| `DASHBOARD_USERNAME` | Optional; defaults to `admin`. |
 | `CRON_SECRET` | Separate strong random secret used by Vercel to authenticate cron invocations. |
 | `STRIPE_SECRET_KEY` | Your Stripe secret key. Start with a test key in a separate test environment/database. |
 | `STRIPE_WEBHOOK_SECRET` | Signing secret for the matching Stripe mode and this webhook destination. |
@@ -19,7 +17,7 @@ Configure these under **Vercel → Project → Settings → Environment Variable
 | `AUTONOMOUS_CREATE_CHECKOUT` | Set `true` to bootstrap automatic checkout creation. |
 | `AUTONOMOUS_SEND_OUTREACH` | Initially `false`. Enable only after reviewing contacts, service scope, email configuration, and opt-out handling. |
 
-Generate independent random values for the dashboard password and cron secret, for example by running `openssl rand -hex 32` twice on your own machine.
+Generate a random value for the cron secret, for example by running `openssl rand -hex 32` on your own machine. The operator dashboard is not challenged by a browser login, so restrict who can reach the deployment with Vercel Deployment Protection (or equivalent network access control) before enabling live payments.
 
 1. Configure the database, dashboard protection, public URL, and cron secret.
 2. In Stripe, create a webhook destination at `https://YOUR_DOMAIN/api/payments/webhook` for:
@@ -28,7 +26,7 @@ Generate independent random values for the dashboard password and cron secret, f
    - `checkout.session.expired`
 3. Set the matching Stripe secret/signing keys in Vercel. Test keys and test events **never count as real revenue**. Use an isolated test/preview database, not your production database.
 4. Deploy the updated code to **Production** on the existing Vercel project, with Fluid compute enabled and a 300-second function duration available. Environment changes require a redeployment. A Git branch preview alone does not activate production cron jobs.
-5. Sign in to the dashboard using HTTP Basic Auth. **No contact list is required.** Every enabled cycle uses the existing public Certificate Transparency acquisition engine with a rotating business-niche query, deduplicates observed domains, and saves the source URL/certificate evidence. Certificates are candidates, not proof of a business or a paid need. Only a published same-business-domain contact with official website URL and non-null MX evidence can advance to an offer. Optional manual domain imports remain available. Fresh production databases contain no sample prospects.
+5. Open the dashboard (no browser login is required; restrict access with Deployment Protection). **No contact list is required.** Every enabled cycle uses the existing public Certificate Transparency acquisition engine with a rotating business-niche query, deduplicates observed domains, and saves the source URL/certificate evidence. Certificates are candidates, not proof of a business or a paid need. Only a published same-business-domain contact with official website URL and non-null MX evidence can advance to an offer. Optional manual domain imports remain available. Fresh production databases contain no sample prospects.
 6. Inspect the readiness checklist. For a first immediate run, use **Run Single Cycle**. Otherwise the next Vercel Cron invocation runs automatically without a browser visit.
 7. Enable email only after the sender/contact/service checks below. Customers must choose to pay on Stripe's hosted checkout before signed live events enter the verified ledger.
 8. Link your bank and manage payout schedules **in your Stripe Dashboard**. No bank linking, payout, transfer, automatic debit, or trading API is called by this app.
@@ -58,7 +56,7 @@ Configuration, pause state, run counters, due times, and an execution lease live
 
 On Vercel, **Enable Vercel Cron** saves configuration and waits for cron; it does not launch a detached serverless task. Manual and cron cycles are awaited, bounded to a batch of up to 10 domains (default 5) and a 240-second work budget with cleanup headroom. The database lease prevents overlap across instances. Remaining/failed targets rotate into subsequent runs. Stop/Pause is checked between steps; an already in-flight provider call cannot be undone.
 
-Missing cron secrets fail closed. The dashboard is unavailable on Vercel until its password is set. Webhook signatures are checked before database work; recording uses a transaction and row lock, validates session/reference/amount/currency/mode, excludes test payments from real cash, and is safe against concurrent paid-event retries. Database failures return 5xx so Stripe can retry.
+Missing cron secrets fail closed. A blocked or skipped cycle stores its reason, and the dashboard and `GET /api/autonomous/schedule` show the last attempt with that reason, so a stalled funnel can be diagnosed without server-log access. Webhook signatures are checked before database work; recording uses a transaction and row lock, validates session/reference/amount/currency/mode, excludes test payments from real cash, and is safe against concurrent paid-event retries. Database failures return 5xx so Stripe can retry.
 
 ## Development and checks
 

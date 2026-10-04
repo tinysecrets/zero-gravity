@@ -45,6 +45,11 @@ describe("configuration boundaries", () => {
     vi.stubEnv("APP_URL", "https://user:password@example.test");
     expect(() => appOrigin()).toThrow();
   });
+  it("does not require a dashboard password for a passwordless dashboard", () => {
+    clearEnv();
+    vi.stubEnv("VERCEL", "1"); vi.stubEnv("DATABASE_URL", "postgresql://fixture"); vi.stubEnv("CRON_SECRET", "fixture");
+    expect(automationReadiness(defaultCycleConfig())).toMatchObject({ ready: true });
+  });
   it("lists missing infrastructure and test email safeguards without secret values", () => {
     clearEnv(); vi.stubEnv("VERCEL", "1"); vi.stubEnv("DATABASE_URL", "fixture-secret"); vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_fixture-secret");
     const result = automationReadiness({ ...defaultCycleConfig(), autoCreateCheckout: true, autoSendOutreach: true });

@@ -183,6 +183,7 @@ export const schedulerSettings = pgTable("scheduler_settings", {
   nextRunAt: timestamp("next_run_at"),
   lastRunAt: timestamp("last_run_at"),
   lastRunStatus: text("last_run_status"),
+  lastRunReason: text("last_run_reason"),
   totalRuns: integer("total_runs").notNull().default(0),
   consecutiveErrors: integer("consecutive_errors").notNull().default(0),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),

@@ -100,7 +100,6 @@ export function automationReadiness(config: CycleConfig): AutomationReadiness {
   if (!process.env.DATABASE_URL) blockers.push("DATABASE_URL is not configured.");
   if (isVercel()) {
     if (!process.env.CRON_SECRET) blockers.push("CRON_SECRET is not configured.");
-    if (!process.env.DASHBOARD_PASSWORD) blockers.push("DASHBOARD_PASSWORD is not configured.");
   }
   if (process.env.STRIPE_SECRET_KEY) {
     try { paymentMode = stripeLivemode() ? "live" : "test"; }
