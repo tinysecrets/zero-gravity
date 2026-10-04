@@ -44,7 +44,13 @@ const VECTOR_DEFAULTS: Record<DealVector, {
 
 export function NewDealModal({ isOpen, onClose, onCreate }: NewDealModalProps) {
   if (!isOpen) return null;
+  return <NewDealModalInner onClose={onClose} onCreate={onCreate} />;
+}
 
+function NewDealModalInner({ onClose, onCreate }: {
+  onClose: () => void;
+  onCreate: (deal: Partial<Opportunity>) => Promise<void>;
+}) {
   const [vector, setVector] = useState<DealVector>("lead_reactivation");
   const [title, setTitle] = useState("");
   const [targetCompany, setTargetCompany] = useState("");

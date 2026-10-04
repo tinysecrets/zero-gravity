@@ -25,13 +25,47 @@ export default function HomePage() {
   const [paymentDealContext, setPaymentDealContext] = useState<Opportunity | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // Fetch initial data
-  const fetchData = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      // Ensure seed / db init
-      await fetch("/api/seed", { method: "POST" });
+  // Initial data loading
+  useEffect(() => {
+    let ignore = false;
+    async function loadInitialData() {
+      try {
+        // Ensure seed / db init
+        await fetch("/api/seed", { method: "POST" });
 
+        const [dealsRes, txRes] = await Promise.all([
+          fetch("/api/opportunities"),
+          fetch("/api/transactions"),
+        ]);
+
+        const dealsData = await dealsRes.json();
+        const txData = await txRes.json();
+
+        if (!ignore) {
+          if (dealsData.success) {
+            setDeals(dealsData.data);
+          }
+          if (txData.success) {
+            setTransactions(txData.data.transactions);
+            setMetrics(txData.data.metrics);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load initial data:", err);
+      } finally {
+        if (!ignore) {
+          setIsLoading(false);
+        }
+      }
+    }
+    loadInitialData();
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  const refreshData = async () => {
+    try {
       const [dealsRes, txRes] = await Promise.all([
         fetch("/api/opportunities"),
         fetch("/api/transactions"),
@@ -48,15 +82,9 @@ export default function HomePage() {
         setMetrics(txData.data.metrics);
       }
     } catch (err) {
-      console.error("Failed to load initial data:", err);
-    } finally {
-      setIsLoading(false);
+      console.error("Failed to refresh data:", err);
     }
-  }, []);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  };
 
   const handleCreateDeal = async (newDeal: Partial<Opportunity>) => {
     try {
@@ -67,7 +95,7 @@ export default function HomePage() {
       });
       const data = await res.json();
       if (data.success) {
-        await fetchData();
+        await refreshData();
         setActiveTab("pipeline");
       }
     } catch (err) {
@@ -87,7 +115,7 @@ export default function HomePage() {
       if (!data.success) {
         throw new Error(data.error || "Failed to update deal.");
       }
-      await fetchData();
+      await refreshData();
     } catch (err) {
       console.error("Failed to update deal:", err);
       throw err;
@@ -101,7 +129,7 @@ export default function HomePage() {
       });
       const data = await res.json();
       if (data.success) {
-        await fetchData();
+        await refreshData();
       }
     } catch (err) {
       console.error("Failed to delete deal:", err);
@@ -117,7 +145,7 @@ export default function HomePage() {
       });
       const data = await res.json();
       if (data.success) {
-        await fetchData();
+        await refreshData();
       }
     } catch (err) {
       console.error("Failed to add transaction:", err);
@@ -215,7 +243,7 @@ export default function HomePage() {
         onClose={() => setIsPaymentModalOpen(false)}
         deals={deals}
         defaultDeal={paymentDealContext}
-        onPaymentRequestCreated={fetchData}
+        onPaymentRequestCreated={refreshData}
       />
     </div>
   );

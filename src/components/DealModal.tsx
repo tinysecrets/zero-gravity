@@ -41,7 +41,15 @@ const ALL_STATUSES: { id: DealStatus; label: string }[] = [
 
 export function DealModal({ deal, onClose, onUpdate, onDelete }: DealModalProps) {
   if (!deal) return null;
+  return <DealModalInner deal={deal} onClose={onClose} onUpdate={onUpdate} onDelete={onDelete} />;
+}
 
+function DealModalInner({ deal, onClose, onUpdate, onDelete }: {
+  deal: Opportunity;
+  onClose: () => void;
+  onUpdate: (updatedDeal: Partial<Opportunity>) => Promise<void>;
+  onDelete: (id: number) => Promise<void>;
+}) {
   const [status, setStatus] = useState<DealStatus>(deal.status);
   const [potentialValue, setPotentialValue] = useState(deal.potentialValue);
   const [operatorFeePercent, setOperatorFeePercent] = useState(deal.operatorFeePercent);
