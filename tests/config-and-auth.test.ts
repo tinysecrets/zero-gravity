@@ -63,32 +63,21 @@ describe("request authentication", () => {
     expect(validCronAuthorization(new Request("https://example.test", { headers: { Authorization: "Bearer wrong" } }))).toBe(false);
     expect(validCronAuthorization(new Request("https://example.test", { headers: { Authorization: "Bearer fixture" } }))).toBe(true);
   });
-  it("fails closed for an unprotected Vercel dashboard", () => {
-    clearEnv(); vi.stubEnv("VERCEL", "1");
-    expect(proxy(new NextRequest("https://example.test/"))?.status).toBe(503);
+  it("does not challenge the operator dashboard with Basic Auth", () => {
+    clearEnv();
+    expect(proxy(new NextRequest("https://example.test/"))?.status).toBe(200);
+    expect(proxy(new NextRequest("https://example.test/api/autonomous/schedule"))?.status).toBe(200);
+    expect(proxy(new NextRequest("https://example.test/api/payments?reference=INV-123"))?.status).toBe(200);
   });
-  it("challenges unauthenticated operators but allows signed-provider routes and session lookups", () => {
-    clearEnv(); vi.stubEnv("DASHBOARD_PASSWORD", "fixture");
-    expect(proxy(new NextRequest("https://example.test/api/autonomous/schedule"))?.status).toBe(401);
-    expect(proxy(new NextRequest("https://example.test/api/payments?reference=INV-123"))?.status).toBe(401);
+  it("keeps signed-provider routes directly reachable", () => {
+    clearEnv();
     for (const path of ["/api/payments/webhook", "/api/autonomous/cron", "/payment/success", "/api/payments?session_id=cs_test_random"]) {
       expect(proxy(new NextRequest(`https://example.test${path}`))?.status).toBe(200);
     }
   });
-  it("accepts the public proxy origin instead of Next's internal listener origin", () => {
-    clearEnv(); vi.stubEnv("DASHBOARD_PASSWORD", "fixture");
-    const authorization = `Basic ${Buffer.from("admin:fixture").toString("base64")}`;
-    const headers = {
-      authorization, origin: "https://3000-preview.e2b.app", host: "3000-preview.e2b.app",
-      "x-forwarded-host": "3000-preview.e2b.app", "x-forwarded-proto": "https",
-    };
-    expect(proxy(new NextRequest("http://0.0.0.0:3000/api/payments", { method: "POST", headers }))?.status).toBe(200);
-    expect(proxy(new NextRequest("http://0.0.0.0:3000/api/payments", { method: "POST", headers: { ...headers, origin: "https://attacker.test" } }))?.status).toBe(403);
-  });
-  it("allows authenticated same-origin management and rejects cross-origin mutations", () => {
-    clearEnv(); vi.stubEnv("DASHBOARD_PASSWORD", "fixture");
-    const authorization = `Basic ${Buffer.from("admin:fixture").toString("base64")}`;
-    expect(proxy(new NextRequest("https://example.test/api/payments", { method: "POST", headers: { authorization, origin: "https://example.test" } }))?.status).toBe(200);
-    expect(proxy(new NextRequest("https://example.test/api/payments", { method: "POST", headers: { authorization, origin: "https://attacker.test" } }))?.status).toBe(403);
+  it("allows same-origin management requests and rejects cross-origin mutations", () => {
+    clearEnv();
+    expect(proxy(new NextRequest("https://example.test/api/payments", { method: "POST", headers: { origin: "https://example.test" } }))?.status).toBe(200);
+    expect(proxy(new NextRequest("https://example.test/api/payments", { method: "POST", headers: { origin: "https://attacker.test" } }))?.status).toBe(403);
   });
 });
