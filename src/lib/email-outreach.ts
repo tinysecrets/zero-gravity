@@ -1,7 +1,7 @@
 import Stripe from "stripe";
 import { db } from "@/db";
 import { opportunities, revenueEvents, paymentRequests } from "@/db/schema";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { stripeLivemode } from "./automation-config";
 import { amountToCents } from "./payment-checkout";
 import { isVerifiedBusinessContact } from "./contact-finder";
@@ -101,10 +101,8 @@ export async function sendOutreach(dealId: number, options: {
     }
     const data = await response.json() as { id?: string };
     if (!data.id) throw new Error("Email provider did not return a receipt ID.");
-    await db.update(opportunities).set({
-      status: "outreach_sent", outreachDeliveryStatus: "sent", outreachProviderId: data.id, updatedAt: new Date(),
-    }).where(eq(opportunities.id, dealId));
-    await markOutreachSent(dealId, deal.auditData);
+    const finalized = await markOutreachSent(dealId, new Date(), mode, data.id);
+    if (!finalized) return { sent: true, method: "resend", recipientEmail: recipient, subject, dealId, error: "Provider accepted the message, but newer sales state prevented follow-up scheduling; review delivery state." };
     await db.insert(revenueEvents).values({
       opportunityId: deal.id, industry: deal.targetNiche, offerTier: deal.offerTier,
       acquisitionSource: deal.acquisitionSource, amount: deal.potentialValue,
