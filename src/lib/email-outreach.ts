@@ -1,7 +1,7 @@
 import Stripe from "stripe";
 import { db } from "@/db";
 import { opportunities, revenueEvents, paymentRequests } from "@/db/schema";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { stripeLivemode } from "./automation-config";
 import { amountToCents } from "./payment-checkout";
 import { isVerifiedBusinessContact } from "./contact-finder";
