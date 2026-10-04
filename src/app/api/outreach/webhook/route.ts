@@ -3,7 +3,7 @@ import { Resend } from "resend";
 import { db } from "@/db";
 import { opportunities, revenueEvents } from "@/db/schema";
 import { ensureDbInitialized } from "@/lib/db-seed";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { classifyReply, stopSalesForReply } from "@/lib/sales-state";
 
 export const dynamic = "force-dynamic";
@@ -63,7 +63,7 @@ export async function POST(request: Request) {
     const disposition = classifyReply([event.data.subject || "", content].join(" "));
     const [deal] = await db.select().from(opportunities).where(and(
       eq(opportunities.targetEmail, from),
-      eq(opportunities.outreachDeliveryStatus, "sent"),
+      inArray(opportunities.outreachDeliveryStatus, ["sent", "sending", "followup_sending"]),
     )).limit(1);
     if (!deal) return NextResponse.json({ received: true, matched: false });
 
