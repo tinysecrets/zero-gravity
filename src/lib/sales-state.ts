@@ -123,9 +123,8 @@ export async function stopSalesForReply(dealId: number, disposition: ReplyDispos
   };
   await db.update(opportunities).set({
     status: optedOut ? "closed" : "outreach_sent",
-    outreachDeliveryStatus: optedOut ? "suppressed" : "reply_received",
-    auditData: withSalesState(deal.auditData, sales),
     outreachDeliveryStatus: "suppressed",
+    auditData: withSalesState(deal.auditData, sales),
     updatedAt: now,
   }).where(eq(opportunities.id, dealId));
   return true;
