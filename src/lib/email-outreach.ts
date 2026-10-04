@@ -21,13 +21,18 @@ export interface OutreachResult {
 export async function sendOutreach(dealId: number, options: {
   authorized: boolean;
   shouldStop?: () => Promise<boolean>;
+  mode?: "initial" | "followup";
 } = { authorized: false }): Promise<OutreachResult> {
   const [deal] = await db.select().from(opportunities).where(eq(opportunities.id, dealId));
   const subject = deal?.outreachMessage?.match(/^Subject:\s*(.+)$/im)?.[1]?.trim() || "Email-authentication review";
   const skipped = (error: string): OutreachResult => ({ sent: false, method: "skipped", recipientEmail: deal?.targetEmail || "", subject, dealId, error });
   if (!options.authorized) return skipped("Explicit autonomous outreach authorization is required.");
   if (!deal?.targetEmail || !deal.outreachMessage) return skipped("A verified contact and outreach draft are required.");
-  if (deal.outreachDeliveryStatus !== "draft") return skipped(`Outreach is ${deal.outreachDeliveryStatus}; automatic resend withheld. Review delivery before retrying.`);
+  const mode = options.mode || "initial";
+  if (mode === "initial" && deal.outreachDeliveryStatus !== "draft") return skipped(`Outreach is ${deal.outreachDeliveryStatus}; automatic resend withheld. Review delivery before retrying.`);
+  if (mode === "followup" && deal.outreachDeliveryStatus !== "followup_sending") return skipped(`Follow-up claim is not active (${deal.outreachDeliveryStatus}).`);
+  const sales = readSalesState(deal.auditData);
+  if (sales.optedOut || sales.replyDisposition || sales.followupCount >= 3) return skipped("Sales follow-up is stopped.");
   const key = process.env.RESEND_API_KEY;
   const from = process.env.FROM_EMAIL;
   const replyTo = process.env.OUTREACH_REPLY_TO;
@@ -72,10 +77,11 @@ export async function sendOutreach(dealId: number, options: {
 
   const [claimed] = await db.update(opportunities).set({
     outreachDeliveryStatus: "sending", outreachAttemptedAt: new Date(), updatedAt: new Date(),
-  }).where(and(eq(opportunities.id, dealId), eq(opportunities.outreachDeliveryStatus, "draft"))).returning({ id: opportunities.id });
+  }).where(and(eq(opportunities.id, dealId), eq(opportunities.outreachDeliveryStatus, mode === "followup" ? "followup_sending" : "draft"))).returning({ id: opportunities.id });
   if (!claimed) return skipped("Another worker already claimed this email.");
+  const message = mode === "followup" ? followupMessage(deal.outreachMessage, sales.followupCount + 1) : deal.outreachMessage;
   const body = [
-    deal.outreachMessage.replace(/^Subject:.*$/m, "").trim(),
+    message.replace(/^Subject:.*$/m, "").trim(),
     "", "Customer-authorized card checkout:", invoice.checkoutUrl,
     "", "---", `From: ${from}`, postalAddress,
     `To opt out of further offers, reply \"unsubscribe\" to ${replyTo}.`,
@@ -83,8 +89,8 @@ export async function sendOutreach(dealId: number, options: {
   try {
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST", signal: AbortSignal.timeout(15_000),
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "Idempotency-Key": `outreach-${dealId}` },
-      body: JSON.stringify({ from, reply_to: replyTo, to: [recipient], subject: invoice.livemode ? subject : `[TEST] ${subject}`, text: body }),
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "Idempotency-Key": `outreach-${dealId}-${mode}-${sales.followupCount}` },
+      body: JSON.stringify({ from, reply_to: replyTo, to: [recipient], subject: mode === "followup" ? `Re: ${subject}` : (invoice.livemode ? subject : `[TEST] ${subject}`), text: body }),
     });
     if (!response.ok) {
       // Even a provider error might follow a partial/indeterminate send. Require
@@ -97,6 +103,7 @@ export async function sendOutreach(dealId: number, options: {
     await db.update(opportunities).set({
       status: "outreach_sent", outreachDeliveryStatus: "sent", outreachProviderId: data.id, updatedAt: new Date(),
     }).where(eq(opportunities.id, dealId));
+    await markOutreachSent(dealId, deal.auditData);
     await db.insert(revenueEvents).values({
       opportunityId: deal.id, industry: deal.targetNiche, offerTier: deal.offerTier,
       acquisitionSource: deal.acquisitionSource, amount: deal.potentialValue,
