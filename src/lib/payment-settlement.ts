@@ -3,7 +3,6 @@ import { db } from "@/db";
 import { financialTransactions, opportunities, paymentRequests, revenueEvents } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { amountToCents } from "./payment-checkout";
-import { markSalesPaid } from "./sales-state";
 
 export class PaymentEventError extends Error {
   constructor(message: string, public readonly status = 400) { super(message); }
