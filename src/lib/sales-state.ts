@@ -69,7 +69,8 @@ export async function claimDueFollowup(dealId: number, auditData: string | null 
   if (current.optedOut || current.replyDisposition || current.followupCount >= MAX_FOLLOWUPS || !current.nextFollowupAt) return null;
   const due = Date.parse(current.nextFollowupAt);
   if (!Number.isFinite(due) || due > now.getTime()) return null;
-  const claimed: SalesState = { ...current, stage: "contacted", nextFollowupAt: null };
+  const nextCount = current.followupCount + 1;
+  const claimed: SalesState = { ...current, stage: `followup_${nextCount}` as SalesStage, followupCount: nextCount, nextFollowupAt: null };
   const result = await db.update(opportunities).set({
     auditData: withSalesState(auditData, claimed),
     outreachDeliveryStatus: "followup_sending",
