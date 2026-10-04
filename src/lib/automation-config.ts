@@ -106,6 +106,9 @@ export function automationReadiness(config: CycleConfig): AutomationReadiness {
   if (operatorAuthState().misconfigured) {
     blockers.push("Production operator access is locked until both OPERATOR_USERNAME and OPERATOR_PASSWORD are configured with valid values.");
   }
+  if (process.env.VERCEL_ENV === "preview" && process.env.ALLOW_PREVIEW_OPERATIONS !== "true") {
+    blockers.push("Preview operations are disabled until ALLOW_PREVIEW_OPERATIONS=true is explicitly enabled for an isolated Preview database.");
+  }
   if (process.env.STRIPE_SECRET_KEY) {
     try { paymentMode = stripeLivemode() ? "live" : "test"; }
     catch { blockers.push("STRIPE_SECRET_KEY is not a valid test/live key."); }

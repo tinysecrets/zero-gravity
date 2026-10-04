@@ -4,7 +4,7 @@ import { proxy } from "@/proxy";
 import { appOrigin, automationReadiness, defaultCycleConfig, nextVercelRun, parseCycleConfig, parseIntervalMinutes } from "@/lib/automation-config";
 import { validCronAuthorization } from "@/lib/request-auth";
 
-const relevantEnv = ["VERCEL", "VERCEL_ENV", "DATABASE_URL", "CRON_SECRET", "DASHBOARD_PASSWORD", "DASHBOARD_USERNAME", "OPERATOR_USERNAME", "OPERATOR_PASSWORD", "CTLOGS_API_KEY", "APP_URL", "NEXT_PUBLIC_APP_URL", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "RESEND_API_KEY", "FROM_EMAIL", "OUTREACH_REPLY_TO", "OUTREACH_POSTAL_ADDRESS", "OUTREACH_TEST_RECIPIENT", "OUTREACH_COMPLIANCE_CONFIRMED", "AUTONOMOUS_SEND_OUTREACH", "AUTONOMOUS_CREATE_CHECKOUT", "VERCEL_PROJECT_PRODUCTION_URL", "VERCEL_URL"];
+const relevantEnv = ["VERCEL", "VERCEL_ENV", "DATABASE_URL", "CRON_SECRET", "DASHBOARD_PASSWORD", "DASHBOARD_USERNAME", "OPERATOR_USERNAME", "OPERATOR_PASSWORD", "CTLOGS_API_KEY", "ALLOW_PREVIEW_OPERATIONS", "APP_URL", "NEXT_PUBLIC_APP_URL", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "RESEND_API_KEY", "FROM_EMAIL", "OUTREACH_REPLY_TO", "OUTREACH_POSTAL_ADDRESS", "OUTREACH_TEST_RECIPIENT", "OUTREACH_COMPLIANCE_CONFIRMED", "AUTONOMOUS_SEND_OUTREACH", "AUTONOMOUS_CREATE_CHECKOUT", "VERCEL_PROJECT_PRODUCTION_URL", "VERCEL_URL"];
 function clearEnv() { for (const key of relevantEnv) vi.stubEnv(key, ""); }
 afterEach(() => vi.unstubAllEnvs());
 
@@ -59,6 +59,19 @@ describe("configuration boundaries", () => {
       blockers: expect.arrayContaining([expect.stringContaining("OPERATOR_USERNAME and OPERATOR_PASSWORD")]),
     });
   });
+  it("blocks preview automation until preview operations are explicitly enabled", () => {
+    clearEnv();
+    vi.stubEnv("NODE_ENV", "production"); vi.stubEnv("VERCEL", "1"); vi.stubEnv("VERCEL_ENV", "preview");
+    vi.stubEnv("DATABASE_URL", "postgresql://preview"); vi.stubEnv("CRON_SECRET", "cron-fixture");
+    vi.stubEnv("OPERATOR_USERNAME", "operator");
+    vi.stubEnv("OPERATOR_PASSWORD", "a-long-random-password-fixture-with-at-least-32-chars");
+    expect(automationReadiness(defaultCycleConfig())).toMatchObject({
+      ready: false,
+      blockers: expect.arrayContaining([expect.stringContaining("Preview operations are disabled")]),
+    });
+    vi.stubEnv("ALLOW_PREVIEW_OPERATIONS", "true");
+    expect(automationReadiness(defaultCycleConfig())).toMatchObject({ ready: true });
+  });
   it("lists missing infrastructure and test email safeguards without secret values", () => {
     clearEnv(); vi.stubEnv("VERCEL", "1"); vi.stubEnv("DATABASE_URL", "fixture-secret"); vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_fixture-secret");
     const result = automationReadiness({ ...defaultCycleConfig(), autoCreateCheckout: true, autoSendOutreach: true });
@@ -108,6 +121,21 @@ describe("request authentication", () => {
     vi.stubEnv("OPERATOR_USERNAME", "invalid:name");
     vi.stubEnv("OPERATOR_PASSWORD", "a-long-random-password-fixture-with-at-least-32-chars");
     expect(proxy(new NextRequest("https://example.test/"))?.status).toBe(503);
+  });
+  it("disables Preview operations by default to protect a shared Production database", () => {
+    clearEnv();
+    vi.stubEnv("NODE_ENV", "production"); vi.stubEnv("VERCEL_ENV", "preview");
+    for (const path of ["/", "/api/autonomous/schedule", "/api/autonomous/cron", "/api/payments/webhook"]) {
+      expect(proxy(new NextRequest(`https://example.test${path}`))?.status).toBe(403);
+    }
+    for (const path of ["/api/health", "/payment/success", "/api/payments?session_id=cs_test_random"]) {
+      expect(proxy(new NextRequest(`https://example.test${path}`))?.status).toBe(200);
+    }
+    vi.stubEnv("ALLOW_PREVIEW_OPERATIONS", "true");
+    vi.stubEnv("OPERATOR_USERNAME", "operator");
+    vi.stubEnv("OPERATOR_PASSWORD", "a-long-random-password-fixture-with-at-least-32-chars");
+    const authorization = `Basic ${Buffer.from("operator:a-long-random-password-fixture-with-at-least-32-chars").toString("base64")}`;
+    expect(proxy(new NextRequest("https://example.test/api/autonomous/schedule", { headers: { authorization } }))?.status).toBe(200);
   });
   it("keeps signed-provider routes directly reachable without operator credentials", () => {
     clearEnv();

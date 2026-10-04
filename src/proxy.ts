@@ -15,6 +15,19 @@ function isProviderRoute(request: NextRequest): boolean {
       request.nextUrl.searchParams.has("session_id"));
 }
 
+function previewOperationsDisabled() {
+  return NextResponse.json(
+    { success: false, error: "Preview operations are disabled. Set ALLOW_PREVIEW_OPERATIONS=true only after configuring an isolated Preview database." },
+    { status: 403, headers: { "Cache-Control": "no-store" } },
+  );
+}
+
+function previewRouteIsReadOnly(request: NextRequest): boolean {
+  const path = request.nextUrl.pathname;
+  return path === "/api/health" || path === "/payment/success" ||
+    (path === "/api/payments" && request.method === "GET" && request.nextUrl.searchParams.has("session_id"));
+}
+
 function operatorConfigUnavailable() {
   return NextResponse.json(
     { success: false, error: "Operator access is not configured. Set OPERATOR_USERNAME and OPERATOR_PASSWORD before using management routes." },
@@ -36,6 +49,12 @@ function operatorAuthenticationRequired() {
 }
 
 export function proxy(request: NextRequest) {
+  if (
+    process.env.VERCEL_ENV === "preview" &&
+    process.env.ALLOW_PREVIEW_OPERATIONS !== "true" &&
+    !previewRouteIsReadOnly(request)
+  ) return previewOperationsDisabled();
+
   if (isProviderRoute(request)) return NextResponse.next();
 
   const auth = operatorAuthState();
