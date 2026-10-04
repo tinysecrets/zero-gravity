@@ -7,6 +7,7 @@ import { ensureDbInitialized } from "@/lib/db-seed";
 import { stripeLivemode } from "@/lib/automation-config";
 import { PaymentEventError, recordStripePayment } from "@/lib/payment-settlement";
 import { markSalesPaid } from "@/lib/sales-state";
+import { sendRevenueAlert } from "@/lib/revenue-alerts";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
