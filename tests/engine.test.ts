@@ -39,6 +39,7 @@ function audit(domain = "business.com"): AuditResult {
 beforeAll(setupDatabase);
 beforeEach(async () => {
   await resetDatabase();
+  vi.stubEnv("CTLOGS_API_KEY", "");
   vi.mocked(runDomainAudit).mockReset().mockImplementation(async (domain) => audit(domain));
   vi.mocked(findContact).mockReset().mockImplementation(async (domain) => ({ email: `owner@${domain}`, contactName: "Test Owner", contactRole: "Owner", source: "website", confidence: "high", sourceUrl: `https://${domain}/contact`, mxRecords: [`10 mail.${domain}`], verifiedAt: new Date().toISOString() }));
   checkoutMock.mockReset().mockImplementation(async (params) => ({
@@ -146,8 +147,18 @@ describe("autonomous customer-payment workflow", () => {
     vi.mocked(runDomainAudit).mockRejectedValueOnce(new Error("DNS unavailable"));
     const result = await runOnce({ force: true });
     expect(result.cycle?.summary).toMatchObject({ domainsScanned: 0, dealsCreated: 0 });
+    expect((await db.select().from(scanTargets))[0]).toMatchObject({ isActive: true });
     expect((await db.select().from(scanTargets))[0].lastAuditedAt).toBeTruthy();
     expect(checkoutMock).not.toHaveBeenCalled();
+  });
+  it("retires only confirmed NXDOMAIN targets and preserves them for operator review", async () => {
+    await targets("dead-business.com");
+    vi.mocked(runDomainAudit).mockRejectedValueOnce(new Error("Domain does not resolve."));
+    const result = await runOnce();
+    expect((await db.select().from(scanTargets))[0]).toMatchObject({ isActive: false });
+    expect(result.cycle?.steps.some((step) => step.message.includes("Target retired after definitive NXDOMAIN"))).toBe(true);
+    await runOnce();
+    expect(vi.mocked(runDomainAudit).mock.calls.map((args) => args[0])).toEqual(["dead-business.com"]);
   });
   it("rotates bounded batches across all active targets", async () => {
     await targets("one-business.com", "two-business.com");
@@ -199,6 +210,7 @@ describe("autonomous customer-payment workflow", () => {
     sourceMock.mockImplementation(async () => new Response("Unavailable", { status: 503 }));
     expect(await runOnce()).toMatchObject({ status: "completed", cycle: { acquisition: { errors: ["crt.sh returned 503"] }, summary: { dealsCreated: 1 } } });
     expect(JSON.parse((await db.select().from(autonomousRuns))[0].details!).acquisition.errors).toEqual(["crt.sh returned 503"]);
+    expect((await getStatus()).lastRunReason).toContain("Discovery warning: crt.sh returned 503");
   });
 
   it.each(["audit", "contact", "checkout"])("one failed %s does not abort processing the next domain", async (stage) => {

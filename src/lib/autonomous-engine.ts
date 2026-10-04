@@ -90,14 +90,18 @@ export async function executeCycle(config: Partial<CycleConfig> = {}, options: {
       try {
         state.acquisition = await acquireFromCTLogs(query, industry, maxResults);
       } catch (error) {
+        const reason = error instanceof Error ? error.message : "Discovery source unavailable.";
         state.acquisition = {
           source: "ct_log", query, sourceUrl: `https://crt.sh/?q=%25${encodeURIComponent(query)}%25&output=json`,
           domainsFound: 0, newInserted: 0, duplicatesSkipped: 0,
-          errors: [error instanceof Error ? error.message : "Discovery source unavailable."],
+          errors: [reason], sources: [{ name: "discovery", status: "failed", domainsFound: 0, reason }],
         };
       }
+      const sourceSummary = state.acquisition.sources?.map((source) =>
+        `${source.name}: ${source.status}${source.domainsFound ? ` (${source.domainsFound} domains)` : ""}${source.reason ? ` — ${source.reason}` : ""}`,
+      ).join("; ");
       addStep(state, { type: "acquisition", domain: "(discovery)",
-        message: `CT discovery (${query}): ${state.acquisition.newInserted} new candidates, ${state.acquisition.duplicatesSkipped} duplicates. ${state.acquisition.errors.join(" ")}` });
+        message: `CT discovery (${query}): ${state.acquisition.newInserted} new candidates, ${state.acquisition.duplicatesSkipped} duplicates.${sourceSummary ? ` Sources: ${sourceSummary}.` : ""}${state.acquisition.errors.length ? ` Errors: ${state.acquisition.errors.join(" ")}` : ""}` });
       await persistRun(state);
     }
     const targets = await db.select().from(scanTargets)
@@ -147,9 +151,18 @@ async function processDomain(state: CycleState, target: Target, shouldStop: () =
   let audit: AuditResult;
   try { audit = await runDomainAudit(domain, niche); }
   catch (error) {
-    addStep(state, { type: "skipped", domain, message: `DNS audit unavailable; no offer created: ${error instanceof Error ? error.message : "unknown error"}` });
-    // Failed targets also rotate instead of occupying the first batch forever.
-    await db.update(scanTargets).set({ lastAuditedAt: new Date() }).where(eq(scanTargets.id, target.id));
+    const reason = error instanceof Error ? error.message : "unknown error";
+    const confirmedNxdomain = reason === "Domain does not resolve.";
+    // Only a definitive root-domain NXDOMAIN retires a target. Timeouts,
+    // SERVFAIL, and provider errors rotate normally and never deactivate it.
+    await db.update(scanTargets).set({
+      lastAuditedAt: new Date(),
+      ...(confirmedNxdomain ? { isActive: false } : {}),
+    }).where(eq(scanTargets.id, target.id));
+    addStep(state, { type: "skipped", domain,
+      message: confirmedNxdomain
+        ? "Target retired after definitive NXDOMAIN responses for the root-domain DNS audit. It remains in history and can be reactivated by the operator."
+        : `DNS audit unavailable; no offer created: ${reason}` });
     return;
   }
   state.summary.domainsScanned++;

@@ -554,7 +554,7 @@ export function AutonomousEngine() {
             <p className="text-[11px] font-mono text-zinc-400">
               Last attempt:{" "}
               <span className={
-                scheduler.lastRunStatus === "completed" ? "text-emerald-400"
+                scheduler.lastRunStatus === "completed" && !scheduler.lastRunReason ? "text-emerald-400"
                   : ["failed", "blocked"].includes(scheduler.lastRunStatus) ? "text-red-400" : "text-amber-300"
               }>{scheduler.lastRunStatus}</span>
               {scheduler.lastRunAt ? ` · ${new Date(scheduler.lastRunAt).toLocaleString()}` : ""}

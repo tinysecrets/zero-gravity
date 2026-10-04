@@ -1,3 +1,5 @@
+import { operatorAuthState } from "./request-auth";
+
 export interface CycleConfig {
   scoreThreshold: number;
   autoCreateDeals: boolean;
@@ -100,6 +102,9 @@ export function automationReadiness(config: CycleConfig): AutomationReadiness {
   if (!process.env.DATABASE_URL) blockers.push("DATABASE_URL is not configured.");
   if (isVercel()) {
     if (!process.env.CRON_SECRET) blockers.push("CRON_SECRET is not configured.");
+  }
+  if (operatorAuthState().misconfigured) {
+    blockers.push("Production operator access is locked until both OPERATOR_USERNAME and OPERATOR_PASSWORD are configured with valid values.");
   }
   if (process.env.STRIPE_SECRET_KEY) {
     try { paymentMode = stripeLivemode() ? "live" : "test"; }

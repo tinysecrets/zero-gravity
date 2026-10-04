@@ -4,7 +4,7 @@ import { proxy } from "@/proxy";
 import { appOrigin, automationReadiness, defaultCycleConfig, nextVercelRun, parseCycleConfig, parseIntervalMinutes } from "@/lib/automation-config";
 import { validCronAuthorization } from "@/lib/request-auth";
 
-const relevantEnv = ["VERCEL", "VERCEL_ENV", "DATABASE_URL", "CRON_SECRET", "DASHBOARD_PASSWORD", "DASHBOARD_USERNAME", "APP_URL", "NEXT_PUBLIC_APP_URL", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "RESEND_API_KEY", "FROM_EMAIL", "OUTREACH_REPLY_TO", "OUTREACH_POSTAL_ADDRESS", "OUTREACH_TEST_RECIPIENT", "OUTREACH_COMPLIANCE_CONFIRMED", "AUTONOMOUS_SEND_OUTREACH", "AUTONOMOUS_CREATE_CHECKOUT", "VERCEL_PROJECT_PRODUCTION_URL", "VERCEL_URL"];
+const relevantEnv = ["VERCEL", "VERCEL_ENV", "DATABASE_URL", "CRON_SECRET", "DASHBOARD_PASSWORD", "DASHBOARD_USERNAME", "OPERATOR_USERNAME", "OPERATOR_PASSWORD", "CTLOGS_API_KEY", "APP_URL", "NEXT_PUBLIC_APP_URL", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "RESEND_API_KEY", "FROM_EMAIL", "OUTREACH_REPLY_TO", "OUTREACH_POSTAL_ADDRESS", "OUTREACH_TEST_RECIPIENT", "OUTREACH_COMPLIANCE_CONFIRMED", "AUTONOMOUS_SEND_OUTREACH", "AUTONOMOUS_CREATE_CHECKOUT", "VERCEL_PROJECT_PRODUCTION_URL", "VERCEL_URL"];
 function clearEnv() { for (const key of relevantEnv) vi.stubEnv(key, ""); }
 afterEach(() => vi.unstubAllEnvs());
 
@@ -45,10 +45,19 @@ describe("configuration boundaries", () => {
     vi.stubEnv("APP_URL", "https://user:password@example.test");
     expect(() => appOrigin()).toThrow();
   });
-  it("does not require a dashboard password for a passwordless dashboard", () => {
+  it("does not require operator credentials during local test/development", () => {
     clearEnv();
     vi.stubEnv("VERCEL", "1"); vi.stubEnv("DATABASE_URL", "postgresql://fixture"); vi.stubEnv("CRON_SECRET", "fixture");
     expect(automationReadiness(defaultCycleConfig())).toMatchObject({ ready: true });
+  });
+  it("blocks production automation until operator access is configured", () => {
+    clearEnv();
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("VERCEL", "1"); vi.stubEnv("DATABASE_URL", "postgresql://fixture"); vi.stubEnv("CRON_SECRET", "fixture");
+    expect(automationReadiness(defaultCycleConfig())).toMatchObject({
+      ready: false,
+      blockers: expect.arrayContaining([expect.stringContaining("OPERATOR_USERNAME and OPERATOR_PASSWORD")]),
+    });
   });
   it("lists missing infrastructure and test email safeguards without secret values", () => {
     clearEnv(); vi.stubEnv("VERCEL", "1"); vi.stubEnv("DATABASE_URL", "fixture-secret"); vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_fixture-secret");
@@ -68,15 +77,42 @@ describe("request authentication", () => {
     expect(validCronAuthorization(new Request("https://example.test", { headers: { Authorization: "Bearer wrong" } }))).toBe(false);
     expect(validCronAuthorization(new Request("https://example.test", { headers: { Authorization: "Bearer fixture" } }))).toBe(true);
   });
-  it("does not challenge the operator dashboard with Basic Auth", () => {
+  it("protects the dashboard and management APIs with production Basic Auth", () => {
+    clearEnv();
+    vi.stubEnv("NODE_ENV", "production");
+    for (const path of ["/", "/api/autonomous/schedule", "/api/payments?reference=INV-123"]) {
+      const response = proxy(new NextRequest(`https://example.test${path}`));
+      expect(response?.status).toBe(503);
+      expect(response?.headers.get("cache-control")).toBe("no-store");
+    }
+
+    vi.stubEnv("OPERATOR_USERNAME", "operator");
+    vi.stubEnv("OPERATOR_PASSWORD", "a-long-random-password-fixture-with-at-least-32-chars");
+    const authorization = `Basic ${Buffer.from("operator:a-long-random-password-fixture-with-at-least-32-chars").toString("base64")}`;
+    for (const path of ["/", "/api/autonomous/schedule", "/api/payments?reference=INV-123"]) {
+      expect(proxy(new NextRequest(`https://example.test${path}`, { headers: { authorization } }))?.status).toBe(200);
+    }
+    const rejected = proxy(new NextRequest("https://example.test/api/autonomous/schedule", {
+      headers: { authorization: "Basic d3Jvbmc6Y3JlZGVudGlhbHM=" },
+    }));
+    expect(rejected?.status).toBe(401);
+    expect(rejected?.headers.get("www-authenticate")).toContain("Zero Gravity Operator");
+  });
+  it("keeps an unconfigured local dashboard convenient but fails closed on partial credentials", () => {
     clearEnv();
     expect(proxy(new NextRequest("https://example.test/"))?.status).toBe(200);
-    expect(proxy(new NextRequest("https://example.test/api/autonomous/schedule"))?.status).toBe(200);
-    expect(proxy(new NextRequest("https://example.test/api/payments?reference=INV-123"))?.status).toBe(200);
+    vi.stubEnv("OPERATOR_USERNAME", "operator");
+    expect(proxy(new NextRequest("https://example.test/"))?.status).toBe(503);
+    vi.stubEnv("OPERATOR_PASSWORD", "too-short");
+    expect(proxy(new NextRequest("https://example.test/"))?.status).toBe(503);
+    vi.stubEnv("OPERATOR_USERNAME", "invalid:name");
+    vi.stubEnv("OPERATOR_PASSWORD", "a-long-random-password-fixture-with-at-least-32-chars");
+    expect(proxy(new NextRequest("https://example.test/"))?.status).toBe(503);
   });
-  it("keeps signed-provider routes directly reachable", () => {
+  it("keeps signed-provider routes directly reachable without operator credentials", () => {
     clearEnv();
-    for (const path of ["/api/payments/webhook", "/api/autonomous/cron", "/payment/success", "/api/payments?session_id=cs_test_random"]) {
+    vi.stubEnv("NODE_ENV", "production");
+    for (const path of ["/api/health", "/api/payments/webhook", "/api/autonomous/cron", "/payment/success", "/api/payments?session_id=cs_test_random"]) {
       expect(proxy(new NextRequest(`https://example.test${path}`))?.status).toBe(200);
     }
   });

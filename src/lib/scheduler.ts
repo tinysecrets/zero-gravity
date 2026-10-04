@@ -216,13 +216,17 @@ export async function runOnce(options: {
     const consecutiveErrors = result.status === "failed" ? claimed.consecutiveErrors + 1 : 0;
     const nextRunAt = isVercel() ? nextVercelRun()
       : new Date(Date.now() + claimed.intervalMinutes * 60_000 * (1 << Math.min(consecutiveErrors, 4)));
+    const discoveryIssues = result.cycle?.acquisition?.errors || [];
+    const degradedReason = discoveryIssues.length
+      ? `Discovery warning: ${discoveryIssues.join(" ")}`.slice(0, 500)
+      : null;
     await db.update(schedulerSettings).set({
       leaseOwner: null,
       leaseExpiresAt: null,
       lastRunStatus: result.status,
       lastRunReason: result.status === "failed"
         ? result.reason || "Cycle execution failed. Review run history and server logs."
-        : null,
+        : degradedReason,
       consecutiveErrors,
       nextRunAt: sql`CASE WHEN ${schedulerSettings.enabled} THEN ${nextRunAt.toISOString()}::timestamp ELSE NULL END`,
       updatedAt: new Date(),

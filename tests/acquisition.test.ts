@@ -12,6 +12,7 @@ beforeAll(setupDatabase);
 beforeEach(async () => {
   await resetDatabase();
   await ensureDbInitialized();
+  vi.stubEnv("CTLOGS_API_KEY", "");
   vi.stubGlobal("fetch", vi.fn().mockImplementation(async () => Response.json([])));
 });
 afterEach(async () => {
@@ -69,8 +70,71 @@ describe("existing Certificate Transparency acquisition", () => {
     expect(await acquireFromCTLogs("roofing")).toMatchObject({ newInserted: 0, errors: [`crt.sh returned ${status}`] });
   });
 
-  it("tolerates a malformed response and network failure without inventing candidates", async () => {
+  it("retries a transient source failure once with bounded backoff", async () => {
+    vi.mocked(fetch)
+      .mockImplementationOnce(async () => new Response("Unavailable", { status: 502 }))
+      .mockImplementationOnce(async () => Response.json([{ name_value: "retried-roofing.com" }]));
+    expect(await acquireFromCTLogs("roofing")).toMatchObject({ newInserted: 1, errors: [] });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("falls back to the licensed independent CT index and retains per-domain provenance", async () => {
+    vi.stubEnv("CTLOGS_API_KEY", "ctlogs-key-fixture");
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.startsWith("https://crt.sh/")) return new Response("Unavailable", { status: 502 });
+      expect(url).toBe("https://api.ctlogs.dev/v1/org?q=roofing");
+      expect(new Headers(init?.headers).get("authorization")).toBe("Bearer ctlogs-key-fixture");
+      return Response.json({ rows: [{
+        id: "1234567890abcdef",
+        match: "North Roofing LLC",
+        subject_cn: "www.north-roofing.com",
+        domains: ["north-roofing.com", "mail.north-roofing.com", "invalid.local"],
+      }] });
+    });
+
+    const result = await acquireFromCTLogs("roofing", "roofing", 5);
+    expect(result).toMatchObject({
+      domainsFound: 1,
+      newInserted: 1,
+      errors: ["crt.sh returned 502"],
+      sources: [
+        { name: "crt.sh", status: "failed", reason: "crt.sh returned 502" },
+        { name: "ctlogs.dev", status: "ok", domainsFound: 1 },
+      ],
+    });
+    expect(JSON.stringify(result)).not.toContain("ctlogs-key-fixture");
+    const [target] = await db.select().from(scanTargets);
+    expect(target).toMatchObject({ domain: "north-roofing.com", source: "ct_log" });
+    expect(JSON.parse(target.sourceEvidence!)).toMatchObject({
+      provider: "ctlogs.dev",
+      certificateId: "1234567890abcdef",
+      certificateUrl: "https://ctlogs.dev/cert/1234567890abcdef",
+      sourceUrl: "https://api.ctlogs.dev/v1/org?q=roofing",
+    });
+  });
+
+  it("adds fallback candidates to a partial primary result but does not exceed the new-target limit", async () => {
+    vi.stubEnv("CTLOGS_API_KEY", "ctlogs-key-fixture");
+    vi.mocked(fetch).mockImplementation(async (input) => {
+      if (String(input).startsWith("https://crt.sh/")) {
+        return Response.json([{ name_value: "primary-roofing.com" }]);
+      }
+      return Response.json({ rows: [
+        { id: "cert-two", domains: ["secondary-roofing.com"] },
+        { id: "cert-three", domains: ["third-roofing.com"] },
+      ] });
+    });
+    const result = await acquireFromCTLogs("roofing", "roofing", 2);
+    expect(result).toMatchObject({ domainsFound: 3, newInserted: 2, duplicatesSkipped: 0 });
+    expect((await db.select().from(scanTargets)).map((row) => row.domain).sort()).toEqual([
+      "primary-roofing.com", "secondary-roofing.com",
+    ]);
+  });
+
+  it("tolerates a malformed response and exhausted network retries without inventing candidates", async () => {
     vi.mocked(fetch).mockImplementationOnce(async () => Response.json({ error: "unavailable" }))
+      .mockRejectedValueOnce(new Error("Network unavailable"))
       .mockRejectedValueOnce(new Error("Network unavailable"));
     expect((await acquireFromCTLogs("roofing")).errors).toHaveLength(1);
     expect((await acquireFromCTLogs("roofing")).errors).toHaveLength(1);
