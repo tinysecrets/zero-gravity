@@ -4,6 +4,7 @@ import { and, eq, lt, or, sql } from "drizzle-orm";
 
 export type SalesStage = "contacted" | "followup_1" | "followup_2" | "followup_3" | "replied" | "opted_out" | "paid" | "closed";
 export type ReplyDisposition = "positive" | "question" | "negative" | "unsubscribe" | "unknown";
+export type DeliveryStatus = "pending" | "in_progress" | "delivered" | "needs_review";
 
 export interface SalesState {
   stage?: SalesStage;
@@ -15,6 +16,7 @@ export interface SalesState {
   optedOut?: boolean;
   stoppedReason?: string | null;
   lastInboundMessageId?: string | null;
+  deliveryStatus?: DeliveryStatus | null;
 }
 
 const MAX_FOLLOWUPS = 3;
@@ -33,6 +35,7 @@ export function readSalesState(auditData: string | null | undefined): SalesState
       optedOut: Boolean(parsed.sales?.optedOut),
       stoppedReason: parsed.sales?.stoppedReason ?? null,
       lastInboundMessageId: parsed.sales?.lastInboundMessageId ?? null,
+      deliveryStatus: parsed.sales?.deliveryStatus ?? null,
     };
   } catch {
     return { followupCount: 0 };
@@ -140,7 +143,21 @@ export async function markSalesPaid(dealId: number, now = new Date()) {
     stage: "paid",
     nextFollowupAt: null,
     stoppedReason: "payment_verified",
+    deliveryStatus: "pending",
   };
+  await db.update(opportunities).set({
+    auditData: withSalesState(deal.auditData, sales),
+    updatedAt: now,
+  }).where(eq(opportunities.id, dealId));
+  return true;
+}
+
+
+export async function setDeliveryStatus(dealId: number, status: DeliveryStatus, now = new Date()) {
+  const [deal] = await db.select({ auditData: opportunities.auditData }).from(opportunities).where(eq(opportunities.id, dealId));
+  if (!deal) return false;
+  const current = readSalesState(deal.auditData);
+  const sales: SalesState = { ...current, deliveryStatus: status };
   await db.update(opportunities).set({
     auditData: withSalesState(deal.auditData, sales),
     updatedAt: now,
