@@ -129,3 +129,21 @@ export function followupMessage(original: string, count: number): string {
 }
 
 export const MAX_SALES_FOLLOWUPS = MAX_FOLLOWUPS;
+
+
+export async function markSalesPaid(dealId: number, now = new Date()) {
+  const [deal] = await db.select({ auditData: opportunities.auditData }).from(opportunities).where(eq(opportunities.id, dealId));
+  if (!deal) return false;
+  const current = readSalesState(deal.auditData);
+  const sales: SalesState = {
+    ...current,
+    stage: "paid",
+    nextFollowupAt: null,
+    stoppedReason: "payment_verified",
+  };
+  await db.update(opportunities).set({
+    auditData: withSalesState(deal.auditData, sales),
+    updatedAt: now,
+  }).where(eq(opportunities.id, dealId));
+  return true;
+}
