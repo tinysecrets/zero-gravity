@@ -44,9 +44,22 @@ export async function POST(request: Request) {
       return NextResponse.json({ received: true });
     }
     const result = await recordStripePayment(session);
-    if (result.paymentRecorded && result.livemode) {
-      if (result.opportunityId) await markSalesPaid(result.opportunityId);
-      await sendRevenueAlert(result);
+    if (
+      result.paymentRecorded &&
+      result.livemode &&
+      typeof result.amount === "string" &&
+      typeof result.currency === "string" &&
+      (typeof result.opportunityId === "number" || result.opportunityId === null)
+    ) {
+      if (result.opportunityId !== null) await markSalesPaid(result.opportunityId);
+      await sendRevenueAlert({
+        amount: result.amount,
+        currency: result.currency,
+        opportunityId: result.opportunityId,
+        referenceCode: result.referenceCode,
+        clientName: result.clientName,
+        serviceDescription: result.serviceDescription,
+      });
     }
     return NextResponse.json(result);
   } catch (error) {
