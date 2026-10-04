@@ -8,6 +8,7 @@ import { CYCLE_BUDGET_MS, defaultCycleConfig, parseCycleConfig, type CycleConfig
 import { db } from "@/db";
 import { opportunities, scanTargets, autonomousRuns, revenueEvents } from "@/db/schema";
 import { and, eq, ne, or, sql } from "drizzle-orm";
+import { claimDueFollowup } from "./sales-state";
 
 export type { CycleConfig } from "./automation-config";
 export type StepType = "acquisition" | "scan" | "audit" | "decide" | "deal_created" | "outreach_generated" | "checkout_created" | "skipped";
@@ -132,7 +133,28 @@ export async function executeCycle(config: Partial<CycleConfig> = {}, options: {
       }
       await persistRun(state);
     }
-    if (state.status === "running") state.status = await shouldStop() ? "stopped" : "completed";
+    if (state.status === "running" && fullConfig.autoSendOutreach && !await shouldStop()) {
+    const followupCandidates = await db.select().from(opportunities)
+      .where(eq(opportunities.outreachDeliveryStatus, "sent"))
+      .orderBy(opportunities.updatedAt)
+      .limit(Math.min(10, fullConfig.maxDomainsPerCycle));
+    for (const deal of followupCandidates) {
+      if (await shouldStop()) break;
+      const claimed = await claimDueFollowup(deal.id, deal.auditData);
+      if (!claimed) continue;
+      try {
+        const result = await sendOutreach(deal.id, { authorized: true, mode: "followup", shouldStop });
+        addStep(state, { type: result.sent ? "outreach_generated" : "skipped", domain: deal.autonomousDomain || deal.targetCompany, dealId: deal.id,
+          message: result.sent ? `Bounded follow-up #${claimed.followupCount} sent.` : result.error || "Follow-up withheld." });
+      } catch (error) {
+        await db.update(opportunities).set({ outreachDeliveryStatus: "needs_review", updatedAt: new Date() }).where(eq(opportunities.id, deal.id));
+        addStep(state, { type: "skipped", domain: deal.autonomousDomain || deal.targetCompany, dealId: deal.id,
+          message: `Follow-up became indeterminate and needs review: ${error instanceof Error ? error.message : "unknown error"}` });
+      }
+      await persistRun(state);
+    }
+  }
+  if (state.status === "running") state.status = await shouldStop() ? "stopped" : "completed";
   } catch (error) {
     state.status = "failed";
     state.error = error instanceof Error ? error.message : "Unknown execution error";
