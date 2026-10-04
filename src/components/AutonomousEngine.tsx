@@ -77,6 +77,7 @@ interface SchedulerStatus {
   nextRunAt: string | null;
   lastRunAt: string | null;
   lastRunStatus: string | null;
+  lastRunReason: string | null;
   cycleActive: boolean;
   totalRuns: number;
   consecutiveErrors: number;
@@ -549,6 +550,17 @@ export function AutonomousEngine() {
             </div>
           )}
 
+          {scheduler?.lastRunStatus && (
+            <p className="text-[11px] font-mono text-zinc-400">
+              Last attempt:{" "}
+              <span className={
+                scheduler.lastRunStatus === "completed" && !scheduler.lastRunReason ? "text-emerald-400"
+                  : ["failed", "blocked"].includes(scheduler.lastRunStatus) ? "text-red-400" : "text-amber-300"
+              }>{scheduler.lastRunStatus}</span>
+              {scheduler.lastRunAt ? ` · ${new Date(scheduler.lastRunAt).toLocaleString()}` : ""}
+              {scheduler.lastRunReason ? ` — ${scheduler.lastRunReason}` : ""}
+            </p>
+          )}
           {scheduler?.mode === "vercel_cron" && <p className="text-[11px] text-zinc-400">The schedule is defined in vercel.json, not this browser. Hobby may run within the 13:00–13:59 UTC window. Enabling takes effect on the next cron invocation; use a manual cycle to run now.</p>}
           <div className="flex items-center gap-3">
             {scheduler?.mode !== "vercel_cron" && <select

@@ -25,6 +25,7 @@ export interface SchedulerStatus extends SchedulerConfig {
   nextRunAt: string | null;
   lastRunAt: string | null;
   lastRunStatus: string | null;
+  lastRunReason: string | null;
   cycleActive: boolean;
   totalRuns: number;
   consecutiveErrors: number;
@@ -76,6 +77,7 @@ export async function getStatus(): Promise<SchedulerStatus> {
     nextRunAt: next?.toISOString() || null,
     lastRunAt: settings.lastRunAt?.toISOString() || null,
     lastRunStatus: settings.lastRunStatus,
+    lastRunReason: settings.lastRunReason,
     cycleActive: Boolean(settings.leaseOwner && settings.leaseExpiresAt && settings.leaseExpiresAt > new Date()),
     totalRuns: settings.totalRuns,
     consecutiveErrors: settings.consecutiveErrors,
@@ -124,6 +126,14 @@ export async function requestCycleStop(): Promise<boolean> {
   return rows.length > 0;
 }
 
+// Persist why an invocation did not start so the dashboard and schedule API can
+// explain a stalled funnel without server-log access. Never overwrite the status
+// of an in-flight run that still holds the lease.
+async function recordOutcome(status: "skipped" | "blocked", reason: string): Promise<void> {
+  await db.update(schedulerSettings).set({ lastRunStatus: status, lastRunReason: reason, updatedAt: new Date() })
+    .where(and(eq(schedulerSettings.id, 1), or(isNull(schedulerSettings.leaseOwner), lte(schedulerSettings.leaseExpiresAt, new Date()))));
+}
+
 // A PostgreSQL lease, not module memory, prevents overlapping cron/manual runs
 // across cold starts, concurrent function instances, and retries.
 export async function runOnce(options: {
@@ -132,17 +142,19 @@ export async function runOnce(options: {
 } = {}): Promise<RunResult> {
   const settings = await loadSettings();
   if (process.env.AUTONOMOUS_ENABLED === "false") {
-    return { status: "skipped", reason: "Disabled by AUTONOMOUS_ENABLED=false." };
+    const reason = "Disabled by AUTONOMOUS_ENABLED=false.";
+    await recordOutcome("skipped", reason);
+    return { status: "skipped", reason };
   }
   if (!options.force && (!settings.enabled || process.env.VERCEL_ENV === "preview")) {
-    return { status: "skipped", reason: "Scheduler is paused or this is a preview deployment." };
+    const reason = "Scheduler is paused or this is a preview deployment.";
+    await recordOutcome("skipped", reason);
+    return { status: "skipped", reason };
   }
   const config = { ...cycleConfig(settings), ...parseCycleConfig(options.cycleConfig || {}) };
   const readiness = automationReadiness(config);
   if (!readiness.ready) {
-    // Do not overwrite an active run's status with a configuration failure.
-    await db.update(schedulerSettings).set({ lastRunStatus: "blocked", updatedAt: new Date() })
-      .where(and(eq(schedulerSettings.id, 1), or(isNull(schedulerSettings.leaseOwner), lte(schedulerSettings.leaseExpiresAt, new Date()))));
+    await recordOutcome("blocked", readiness.blockers.join(" "));
     return { status: "blocked", reason: readiness.blockers.join(" ") };
   }
 
@@ -154,6 +166,7 @@ export async function runOnce(options: {
     stopRequested: false,
     lastRunAt: now,
     lastRunStatus: "running",
+    lastRunReason: null,
     totalRuns: sql`${schedulerSettings.totalRuns} + 1`,
     updatedAt: now,
   }).where(and(
@@ -203,10 +216,17 @@ export async function runOnce(options: {
     const consecutiveErrors = result.status === "failed" ? claimed.consecutiveErrors + 1 : 0;
     const nextRunAt = isVercel() ? nextVercelRun()
       : new Date(Date.now() + claimed.intervalMinutes * 60_000 * (1 << Math.min(consecutiveErrors, 4)));
+    const discoveryIssues = result.cycle?.acquisition?.errors || [];
+    const degradedReason = discoveryIssues.length
+      ? `Discovery warning: ${discoveryIssues.join(" ")}`.slice(0, 500)
+      : null;
     await db.update(schedulerSettings).set({
       leaseOwner: null,
       leaseExpiresAt: null,
       lastRunStatus: result.status,
+      lastRunReason: result.status === "failed"
+        ? result.reason || "Cycle execution failed. Review run history and server logs."
+        : degradedReason,
       consecutiveErrors,
       nextRunAt: sql`CASE WHEN ${schedulerSettings.enabled} THEN ${nextRunAt.toISOString()}::timestamp ELSE NULL END`,
       updatedAt: new Date(),

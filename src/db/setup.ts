@@ -178,8 +178,15 @@ export const DATABASE_SETUP_SQL = `
         next_run_at TIMESTAMP,
         last_run_at TIMESTAMP,
         last_run_status TEXT,
+        last_run_reason TEXT,
         total_runs INTEGER NOT NULL DEFAULT 0,
         consecutive_errors INTEGER NOT NULL DEFAULT 0,
         updated_at TIMESTAMP NOT NULL DEFAULT NOW()
       );
+
+      -- Scheduler tables created before these columns existed must be upgraded
+      -- additively because CREATE TABLE IF NOT EXISTS does not alter an existing table.
+      ALTER TABLE scheduler_settings ADD COLUMN IF NOT EXISTS auto_send_outreach BOOLEAN NOT NULL DEFAULT false;
+      ALTER TABLE scheduler_settings ADD COLUMN IF NOT EXISTS max_domains_per_cycle INTEGER NOT NULL DEFAULT 5;
+      ALTER TABLE scheduler_settings ADD COLUMN IF NOT EXISTS last_run_reason TEXT;
 `;

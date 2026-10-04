@@ -91,17 +91,27 @@ describe("persistent Vercel scheduler", () => {
     expect((await runOnce()).status).toBe("failed");
     expect(await getStatus()).toMatchObject({ consecutiveErrors: 1, lastRunStatus: "failed", cycleActive: false });
   });
-  it("blocks incomplete checkout configuration before side effects", async () => {
+  it("blocks incomplete checkout configuration before side effects and records why", async () => {
     vi.stubEnv("STRIPE_WEBHOOK_SECRET", "");
     expect(await runOnce()).toMatchObject({ status: "blocked" });
     expect(executeCycle).not.toHaveBeenCalled();
-    expect((await getStatus()).totalRuns).toBe(0);
+    const status = await getStatus();
+    expect(status.totalRuns).toBe(0);
+    expect(status.lastRunStatus).toBe("blocked");
+    expect(status.lastRunReason).toContain("STRIPE_WEBHOOK_SECRET");
+  });
+  it("runs automated collection without a dashboard password", async () => {
+    vi.stubEnv("DASHBOARD_PASSWORD", "");
+    expect((await runOnce()).status).toBe("completed");
+    expect(executeCycle).toHaveBeenCalledTimes(1);
   });
   it("honors the kill switch and skips automatic preview runs", async () => {
     vi.stubEnv("AUTONOMOUS_ENABLED", "false");
     expect((await runOnce({ force: true })).status).toBe("skipped");
+    expect((await getStatus()).lastRunReason).toContain("AUTONOMOUS_ENABLED");
     vi.stubEnv("AUTONOMOUS_ENABLED", "true"); vi.stubEnv("VERCEL_ENV", "preview");
     expect((await runOnce()).status).toBe("skipped");
+    expect((await getStatus()).lastRunReason).toContain("preview");
     expect(executeCycle).not.toHaveBeenCalled();
   });
   it("rejects malformed scheduler input rather than enabling unsafe defaults", async () => {

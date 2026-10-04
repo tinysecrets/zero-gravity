@@ -1,24 +1,69 @@
 import { NextRequest, NextResponse } from "next/server";
-import { sameOriginRequest } from "@/lib/request-auth";
+import { operatorAuthState, sameOriginRequest, validOperatorAuthorization } from "@/lib/request-auth";
 
-// Zero Gravity is intentionally operator-accessible without a browser login.
-// Provider callbacks remain public because Stripe/Vercel invoke them directly.
-export function proxy(request: NextRequest) {
+// These endpoints are authenticated at their provider boundary instead of by
+// operator HTTP Basic Auth: Vercel cron's Bearer token, Stripe's webhook
+// signature, or an unguessable Checkout Session ID.
+function isProviderRoute(request: NextRequest): boolean {
   const path = request.nextUrl.pathname;
-
-  const isProviderRoute =
-    path === "/api/health" ||
+  return path === "/api/health" ||
     path === "/api/autonomous/cron" ||
     path === "/api/payments/webhook" ||
     path === "/payment/success" ||
     (path === "/api/payments" &&
       request.method === "GET" &&
       request.nextUrl.searchParams.has("session_id"));
+}
 
-  if (isProviderRoute) return NextResponse.next();
+function previewOperationsDisabled() {
+  return NextResponse.json(
+    { success: false, error: "Preview operations are disabled. Set ALLOW_PREVIEW_OPERATIONS=true only after configuring an isolated Preview database." },
+    { status: 403, headers: { "Cache-Control": "no-store" } },
+  );
+}
 
-  // No username/password challenge. Keep browser mutations same-origin so the
-  // public dashboard cannot be driven cross-origin by a malicious web page.
+function previewRouteIsReadOnly(request: NextRequest): boolean {
+  const path = request.nextUrl.pathname;
+  return path === "/api/health" || path === "/payment/success" ||
+    (path === "/api/payments" && request.method === "GET" && request.nextUrl.searchParams.has("session_id"));
+}
+
+function operatorConfigUnavailable() {
+  return NextResponse.json(
+    { success: false, error: "Operator access is not configured. Set OPERATOR_USERNAME and OPERATOR_PASSWORD before using management routes." },
+    { status: 503, headers: { "Cache-Control": "no-store" } },
+  );
+}
+
+function operatorAuthenticationRequired() {
+  return NextResponse.json(
+    { success: false, error: "Operator authentication required." },
+    {
+      status: 401,
+      headers: {
+        "WWW-Authenticate": 'Basic realm="Zero Gravity Operator", charset="UTF-8"',
+        "Cache-Control": "no-store",
+      },
+    },
+  );
+}
+
+export function proxy(request: NextRequest) {
+  if (
+    process.env.VERCEL_ENV === "preview" &&
+    process.env.ALLOW_PREVIEW_OPERATIONS !== "true" &&
+    !previewRouteIsReadOnly(request)
+  ) return previewOperationsDisabled();
+
+  if (isProviderRoute(request)) return NextResponse.next();
+
+  const auth = operatorAuthState();
+  if (auth.misconfigured) return operatorConfigUnavailable();
+  if (auth.required && !validOperatorAuthorization(request)) {
+    return operatorAuthenticationRequired();
+  }
+
+  // Browser mutations also require a same-origin request to prevent CSRF.
   if (
     !["GET", "HEAD", "OPTIONS"].includes(request.method) &&
     !sameOriginRequest(request)
