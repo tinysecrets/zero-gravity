@@ -80,7 +80,13 @@ export async function sendOutreach(dealId: number, options: {
     outreachDeliveryStatus: "sending", outreachAttemptedAt: new Date(), updatedAt: new Date(),
   }).where(and(eq(opportunities.id, dealId), eq(opportunities.outreachDeliveryStatus, mode === "followup" ? "followup_sending" : "draft"))).returning({ id: opportunities.id });
   if (!claimed) return skipped("Another worker already claimed this email.");
-  const message = mode === "followup" ? followupMessage(deal.outreachMessage, sales.followupCount + 1) : deal.outreachMessage;
+  const [latest] = await db.select({ auditData: opportunities.auditData, outreachDeliveryStatus: opportunities.outreachDeliveryStatus })
+    .from(opportunities).where(eq(opportunities.id, dealId));
+  const latestSales = readSalesState(latest?.auditData);
+  if (!latest || latest.outreachDeliveryStatus !== "sending" || latestSales.optedOut || latestSales.replyDisposition || latestSales.stage === "paid" || latestSales.stoppedReason === "payment_verified") {
+    return skipped("Sales state changed after claim; email withheld.");
+  }
+  const message = mode === "followup" ? followupMessage(deal.outreachMessage, latestSales.followupCount + 1) : deal.outreachMessage;
   const body = [
     message.replace(/^Subject:.*$/m, "").trim(),
     "", "Customer-authorized card checkout:", invoice.checkoutUrl,
