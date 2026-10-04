@@ -43,7 +43,10 @@ export async function POST(request: Request) {
       ));
       return NextResponse.json({ received: true });
     }
-    const result = await recordStripePayment(session);\n    if (result.paymentRecorded && result.livemode && result.opportunityId) await markSalesPaid(result.opportunityId);\n    return NextResponse.json(result);
+    const result = await recordStripePayment(session);\n    if (result.paymentRecorded && result.livemode) {
+      if (result.opportunityId) await markSalesPaid(result.opportunityId);
+      await sendRevenueAlert(result);
+    }\n    return NextResponse.json(result);
   } catch (error) {
     if (error instanceof PaymentEventError) return NextResponse.json({ error: error.message }, { status: error.status });
     console.error("Stripe payment recording failed:", error);
