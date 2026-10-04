@@ -6,6 +6,7 @@ import { and, eq, ne } from "drizzle-orm";
 import { ensureDbInitialized } from "@/lib/db-seed";
 import { stripeLivemode } from "@/lib/automation-config";
 import { PaymentEventError, recordStripePayment } from "@/lib/payment-settlement";
+import { markSalesPaid } from "@/lib/sales-state";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -41,7 +42,7 @@ export async function POST(request: Request) {
       ));
       return NextResponse.json({ received: true });
     }
-    return NextResponse.json(await recordStripePayment(session));
+    const result = await recordStripePayment(session);\n    if (result.paymentRecorded && result.livemode && result.opportunityId) await markSalesPaid(result.opportunityId);\n    return NextResponse.json(result);
   } catch (error) {
     if (error instanceof PaymentEventError) return NextResponse.json({ error: error.message }, { status: error.status });
     console.error("Stripe payment recording failed:", error);
