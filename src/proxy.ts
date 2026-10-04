@@ -9,6 +9,7 @@ function isProviderRoute(request: NextRequest): boolean {
   return path === "/api/health" ||
     path === "/api/autonomous/cron" ||
     path === "/api/payments/webhook" ||
+    path === "/api/webhook/stripe" ||
     path === "/payment/success" ||
     (path === "/api/payments" &&
       request.method === "GET" &&
