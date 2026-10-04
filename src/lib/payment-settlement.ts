@@ -35,7 +35,7 @@ export async function recordStripePayment(session: Stripe.Checkout.Session) {
     if (!session.livemode) {
       // Test card events confirm the test invoice only; never contaminate cash metrics.
       await tx.update(paymentRequests).set({ status: "paid", paidAt: new Date(), updatedAt: new Date() }).where(eq(paymentRequests.id, id));
-      return { received: true, paymentRecorded: true, livemode: false };
+      return { received: true, paymentRecorded: true, livemode: false, opportunityId: invoice.opportunityId };
     }
 
     const [deal] = invoice.opportunityId ? await tx.select().from(opportunities).where(eq(opportunities.id, invoice.opportunityId)) : [];
@@ -60,6 +60,6 @@ export async function recordStripePayment(session: Stripe.Checkout.Session) {
         eventType: "payment_verified",
       });
     }
-    return { received: true, paymentRecorded: true, livemode: true };
+    return { received: true, paymentRecorded: true, livemode: true, opportunityId: invoice.opportunityId };
   });
 }
