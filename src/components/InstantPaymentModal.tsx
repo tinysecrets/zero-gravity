@@ -40,14 +40,48 @@ export function InstantPaymentModal({
   onPaymentRequestCreated,
   defaultDeal,
 }: InstantPaymentModalProps) {
+  if (!isOpen) return null;
+  return (
+    <InstantPaymentModalInner
+      onClose={onClose}
+      deals={deals}
+      onPaymentRequestCreated={onPaymentRequestCreated}
+      defaultDeal={defaultDeal}
+    />
+  );
+}
+
+function InstantPaymentModalInner({
+  onClose,
+  deals,
+  onPaymentRequestCreated,
+  defaultDeal,
+}: {
+  onClose: () => void;
+  deals: Opportunity[];
+  onPaymentRequestCreated: () => Promise<void>;
+  defaultDeal?: Opportunity | null;
+}) {
   const initialDeal = useMemo(
     () => defaultDeal || deals.find((deal) => deal.status !== "revenue_collected") || deals[0] || null,
     [defaultDeal, deals]
   );
-  const [selectedDealId, setSelectedDealId] = useState("");
-  const [clientName, setClientName] = useState("");
-  const [serviceType, setServiceType] = useState("");
-  const [amount, setAmount] = useState("");
+  const [selectedDealId, setSelectedDealId] = useState(initialDeal ? String(initialDeal.id) : "");
+  const [clientName, setClientName] = useState(initialDeal?.targetCompany || "");
+  const [serviceType, setServiceType] = useState(initialDeal?.title || "Professional services");
+  const [amount, setAmount] = useState(
+    initialDeal
+      ? String(
+          Math.max(
+            1,
+            Math.round(
+              parseFloat(initialDeal.potentialValue || "0") *
+                (parseFloat(initialDeal.operatorFeePercent || "25") / 100)
+            )
+          )
+        )
+      : ""
+  );
   const [isProcessing, setIsProcessing] = useState(false);
   const [result, setResult] = useState<{
     paymentRequest: PaymentRequestResponse;
@@ -56,30 +90,6 @@ export function InstantPaymentModal({
   } | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedDispatch, setCopiedDispatch] = useState(false);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const deal = initialDeal;
-    setSelectedDealId(deal ? String(deal.id) : "");
-    setClientName(deal?.targetCompany || "");
-    setServiceType(deal?.title || "Professional services");
-    setAmount(
-      deal
-        ? String(
-            Math.max(
-              1,
-              Math.round(
-                parseFloat(deal.potentialValue || "0") *
-                  (parseFloat(deal.operatorFeePercent || "25") / 100)
-              )
-            )
-          )
-        : ""
-    );
-    setResult(null);
-  }, [isOpen, initialDeal]);
-
-  if (!isOpen) return null;
 
   const handleDealSelectChange = (dealId: string) => {
     setSelectedDealId(dealId);
