@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { opportunities } from "@/db/schema";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
 
 export type SalesStage = "contacted" | "followup_1" | "followup_2" | "followup_3" | "replied" | "opted_out" | "paid" | "closed";
 export type ReplyDisposition = "positive" | "question" | "negative" | "unsubscribe" | "unknown";
@@ -61,6 +61,7 @@ export async function markOutreachSent(
   if (!deal || deal.outreachDeliveryStatus !== "sending") return null;
 
   const current = readSalesState(deal.auditData);
+  if (current.optedOut || current.replyDisposition || current.stage === "paid" || current.stoppedReason === "payment_verified") return null;
   const followupCount = Math.min(MAX_FOLLOWUPS, current.followupCount + (mode === "followup" ? 1 : 0));
   const delay = FOLLOWUP_DELAYS_MS[followupCount - 1];
   const next = delay ? new Date(now.getTime() + delay) : null;
@@ -92,8 +93,7 @@ export async function claimDueFollowup(dealId: number, auditData: string | null 
   if (current.optedOut || current.replyDisposition || current.followupCount >= MAX_FOLLOWUPS || !current.nextFollowupAt) return null;
   const due = Date.parse(current.nextFollowupAt);
   if (!Number.isFinite(due) || due > now.getTime()) return null;
-  const nextCount = current.followupCount + 1;
-  const claimed: SalesState = { ...current, stage: `followup_${nextCount}` as SalesStage, followupCount: nextCount, nextFollowupAt: null };
+  const claimed: SalesState = { ...current, stage: `followup_${current.followupCount + 1}` as SalesStage, nextFollowupAt: null };
   const result = await db.update(opportunities).set({
     auditData: withSalesState(auditData, claimed),
     outreachDeliveryStatus: "followup_sending",
@@ -101,7 +101,7 @@ export async function claimDueFollowup(dealId: number, auditData: string | null 
   }).where(and(
     eq(opportunities.id, dealId),
     eq(opportunities.outreachDeliveryStatus, "sent"),
-    eq(opportunities.auditData, auditData || "{}"),
+    or(eq(opportunities.auditData, auditData || "{}"), isNull(opportunities.auditData)),
   )).returning({ id: opportunities.id });
   return result.length ? claimed : null;
 }
@@ -125,6 +125,7 @@ export async function stopSalesForReply(dealId: number, disposition: ReplyDispos
     status: optedOut ? "closed" : "outreach_sent",
     outreachDeliveryStatus: optedOut ? "suppressed" : "reply_received",
     auditData: withSalesState(deal.auditData, sales),
+    outreachDeliveryStatus: "suppressed",
     updatedAt: now,
   }).where(eq(opportunities.id, dealId));
   return true;
