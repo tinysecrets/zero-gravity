@@ -168,6 +168,7 @@ export async function markSalesPaid(dealId: number, now = new Date()) {
   };
   await db.update(opportunities).set({
     auditData: withSalesState(deal.auditData, sales),
+    outreachDeliveryStatus: "suppressed",
     updatedAt: now,
   }).where(eq(opportunities.id, dealId));
   return true;
