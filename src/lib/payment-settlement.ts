@@ -8,6 +8,31 @@ export class PaymentEventError extends Error {
   constructor(message: string, public readonly status = 400) { super(message); }
 }
 
+export type StripePaymentSettlementResult =
+  | {
+      received: true;
+      status: "awaiting_payment";
+      paymentRecorded: false;
+      livemode: boolean;
+    }
+  | {
+      received: true;
+      idempotent: true;
+      paymentRecorded: false;
+      livemode: boolean;
+    }
+  | {
+      received: true;
+      paymentRecorded: true;
+      livemode: boolean;
+      opportunityId: number | null;
+      amount: string;
+      currency: string;
+      referenceCode?: string;
+      clientName?: string;
+      serviceDescription?: string;
+    };
+
 function transactionTypeForVector(vector?: string) {
   if (vector === "technical_leak_audit") return "fix_bounty";
   if (vector === "micro_sponsorship") return "sponsorship_brokerage";
@@ -17,7 +42,7 @@ function transactionTypeForVector(vector?: string) {
 
 // A confirmed card payment is not a bank payout. Record receipt atomically and
 // exactly once, including when Stripe concurrently retries different paid events.
-export async function recordStripePayment(session: Stripe.Checkout.Session) {
+export async function recordStripePayment(session: Stripe.Checkout.Session): Promise<StripePaymentSettlementResult> {
   if (session.payment_status !== "paid") return { received: true, status: "awaiting_payment", paymentRecorded: false, livemode: session.livemode };
   const rawId = session.metadata?.paymentRequestId || "";
   const id = Number(rawId);
