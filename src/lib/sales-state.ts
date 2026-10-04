@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { opportunities } from "@/db/schema";
-import { and, eq, lt, or, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 export type SalesStage = "contacted" | "followup_1" | "followup_2" | "followup_3" | "replied" | "opted_out" | "paid" | "closed";
 export type ReplyDisposition = "positive" | "question" | "negative" | "unsubscribe" | "unknown";
@@ -81,7 +81,7 @@ export async function claimDueFollowup(dealId: number, auditData: string | null 
   }).where(and(
     eq(opportunities.id, dealId),
     eq(opportunities.outreachDeliveryStatus, "sent"),
-    sql`(${opportunities.auditData}::jsonb->'sales'->>'nextFollowupAt') = ${current.nextFollowupAt}`,
+    eq(opportunities.auditData, auditData || "{}"),
   )).returning({ id: opportunities.id });
   return result.length ? claimed : null;
 }
