@@ -18,7 +18,7 @@ function transactionTypeForVector(vector?: string) {
 // A confirmed card payment is not a bank payout. Record receipt atomically and
 // exactly once, including when Stripe concurrently retries different paid events.
 export async function recordStripePayment(session: Stripe.Checkout.Session) {
-  if (session.payment_status !== "paid") return { received: true, status: "awaiting_payment" };
+  if (session.payment_status !== "paid") return { received: true, status: "awaiting_payment", paymentRecorded: false, livemode: session.livemode };
   const rawId = session.metadata?.paymentRequestId || "";
   const id = Number(rawId);
   if (!/^\d+$/.test(rawId) || !Number.isSafeInteger(id) || id <= 0) throw new PaymentEventError("Payment request metadata is missing or invalid.");
@@ -30,7 +30,7 @@ export async function recordStripePayment(session: Stripe.Checkout.Session) {
       invoice.livemode !== session.livemode) {
       throw new PaymentEventError("Stripe session, invoice reference, amount, currency, or payment mode does not match the saved invoice.");
     }
-    if (invoice.status === "paid" || invoice.transactionId) return { received: true, idempotent: true };
+    if (invoice.status === "paid" || invoice.transactionId) return { received: true, idempotent: true, paymentRecorded: false, livemode: session.livemode };
 
     if (!session.livemode) {
       // Test card events confirm the test invoice only; never contaminate cash metrics.
