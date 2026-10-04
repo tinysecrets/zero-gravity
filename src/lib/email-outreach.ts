@@ -6,6 +6,7 @@ import { stripeLivemode } from "./automation-config";
 import { amountToCents } from "./payment-checkout";
 import { isVerifiedBusinessContact } from "./contact-finder";
 import { publicBusinessDomain } from "./public-domain";
+import { followupMessage, markOutreachSent, readSalesState } from "./sales-state";
 
 export interface OutreachResult {
   sent: boolean;
