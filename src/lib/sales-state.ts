@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { opportunities } from "@/db/schema";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 
 export type SalesStage = "contacted" | "followup_1" | "followup_2" | "followup_3" | "replied" | "opted_out" | "paid" | "closed";
 export type ReplyDisposition = "positive" | "question" | "negative" | "unsubscribe" | "unknown";
@@ -48,23 +48,43 @@ function withSalesState(auditData: string | null | undefined, sales: SalesState)
   return JSON.stringify({ ...parsed, sales });
 }
 
-export async function markOutreachSent(dealId: number, auditData: string | null | undefined, now = new Date()) {
-  const current = readSalesState(auditData);
-  const next = new Date(now.getTime() + FOLLOWUP_DELAYS_MS[current.followupCount] || now.getTime());
-  const followupCount = current.followupCount;
+export async function markOutreachSent(
+  dealId: number,
+  now = new Date(),
+  mode: "initial" | "followup" = "initial",
+  providerId?: string,
+) {
+  const [deal] = await db.select({
+    auditData: opportunities.auditData,
+    outreachDeliveryStatus: opportunities.outreachDeliveryStatus,
+  }).from(opportunities).where(eq(opportunities.id, dealId));
+  if (!deal || deal.outreachDeliveryStatus !== "sending") return null;
+
+  const current = readSalesState(deal.auditData);
+  const followupCount = Math.min(MAX_FOLLOWUPS, current.followupCount + (mode === "followup" ? 1 : 0));
+  const delay = FOLLOWUP_DELAYS_MS[followupCount - 1];
+  const next = delay ? new Date(now.getTime() + delay) : null;
   const sales: SalesState = {
     ...current,
     stage: followupCount === 0 ? "contacted" : (`followup_${followupCount}` as SalesStage),
     followupCount,
     lastContactedAt: now.toISOString(),
-    nextFollowupAt: followupCount < MAX_FOLLOWUPS ? next.toISOString() : null,
+    nextFollowupAt: followupCount < MAX_FOLLOWUPS ? next?.toISOString() ?? null : null,
     stoppedReason: null,
   };
-  await db.update(opportunities).set({
-    auditData: withSalesState(auditData, sales),
+
+  const result = await db.update(opportunities).set({
+    auditData: withSalesState(deal.auditData, sales),
+    status: "outreach_sent",
+    outreachDeliveryStatus: "sent",
+    ...(providerId ? { outreachProviderId: providerId } : {}),
     updatedAt: now,
-  }).where(eq(opportunities.id, dealId));
-  return sales;
+  }).where(and(
+    eq(opportunities.id, dealId),
+    eq(opportunities.outreachDeliveryStatus, "sending"),
+  )).returning({ id: opportunities.id });
+
+  return result.length ? sales : null;
 }
 
 export async function claimDueFollowup(dealId: number, auditData: string | null | undefined, now = new Date()): Promise<SalesState | null> {
