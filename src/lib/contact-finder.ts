@@ -193,7 +193,7 @@ function prioritizeEmails(emails: string[]): string[] {
 
 function extractDecisionMaker(html: string): { name: string; role: string } | null {
   const patterns = [
-    /(?:founded?\s+by|founder[:\s]+|ceo[:\s]+|owner[:\s]+|president[:\s]+)\s*([A-Z][a-z]+\s+[A-Z][a-z]+)/
+    /(?:founded?\s+by|founder[:\s]+|ceo[:\s]+|owner[:\s]+|president[:\s]+)\s*([A-Z][a-z]+\s+[A-Z][a-z]+)/,
     /([A-Z][a-z]+\s+[A-Z][a-z]+)[\s,—–]+(?:founder|ceo|owner|president|principal)/
   ];
   for (const regex of patterns) {
