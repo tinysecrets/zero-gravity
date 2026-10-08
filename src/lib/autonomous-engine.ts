@@ -7,7 +7,7 @@ import { createPaymentCheckout } from "./payment-checkout";
 import { CYCLE_BUDGET_MS, defaultCycleConfig, parseCycleConfig, type CycleConfig } from "./automation-config";
 import { db } from "@/db";
 import { opportunities, scanTargets, autonomousRuns, revenueEvents } from "@/db/schema";
-import { and, eq, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, ne, or, sql } from "drizzle-orm";
 import { backfillFollowupSchedules, claimDueFollowup } from "./sales-state";
 
 export type { CycleConfig } from "./automation-config";
@@ -108,11 +108,15 @@ export async function executeCycle(config: Partial<CycleConfig> = {}, options: {
     const targets = await db.select().from(scanTargets)
       .where(and(eq(scanTargets.isActive, true), ne(scanTargets.source, "demo")))
       // Rotate bounded batches so the same high-priority domains cannot starve others.
-      .orderBy(sql`${scanTargets.lastAuditedAt} ASC NULLS FIRST`, scanTargets.priority, scanTargets.id)
-      .limit(fullConfig.maxDomainsPerCycle);
-    if (!targets.length) addStep(state, { type: "skipped", domain: "(none)", message: "No active candidates available this cycle. Public discovery will run again on the next scheduled cycle; no contact list is required." });
+      .orderBy(sql`${scanTargets.lastAuditedAt} ASC NULLS FIRST`, scanTargets.priority, desc(scanTargets.createdAt), scanTargets.id)
+      .limit(fullConfig.maxDomainsPerCycle * 5);
+    const qualifiedTargets = targets.filter((target) => {
+      const name = publicBusinessDomain(target.domain);
+      return Boolean(name && !name.includes("--") && !/^(?:[a-z0-9]{1,4}-){2,}/i.test(name.split(".")[0] || ""));
+    }).slice(0, fullConfig.maxDomainsPerCycle);
+    if (!qualifiedTargets.length) addStep(state, { type: "skipped", domain: "(none)", message: "No qualified public-business candidates available this cycle. Discovery will run again on the next scheduled cycle." });
 
-    for (const target of targets) {
+    for (const target of qualifiedTargets) {
       if (await shouldStop()) {
         state.status = "stopped";
         addStep(state, { type: "skipped", domain: target.domain, message: "Stop requested or execution budget reached." });
