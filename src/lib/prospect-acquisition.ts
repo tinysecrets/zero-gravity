@@ -1,7 +1,7 @@
 import { db } from "@/db";
 import { scanTargets } from "@/db/schema";
 import { and, eq, isNull } from "drizzle-orm";
-import { publicBusinessDomain } from "./public-domain";
+import { isPlausibleBusinessDomain, publicBusinessDomain } from "./public-domain";
 
 // ---------------------------------------------------------------------------
 // Prospect Acquisition Engine
@@ -364,7 +364,7 @@ function certificateDomains(
     for (const name of names.split("\n")) {
       if (/[/?#@:]/.test(name)) continue;
       const domain = extractRootDomain(name);
-      if (!domain || domains.has(domain)) continue;
+      if (!domain || !isPlausibleBusinessDomain(domain) || domains.has(domain)) continue;
       const rawId = String(record.id ?? "");
       const certificateId = /^\d+$/.test(rawId) ? rawId : null;
       domains.set(domain, JSON.stringify({
@@ -398,7 +398,7 @@ function organizationDomains(payload: unknown, sourceUrl: string, query: string)
       const trimmedName = name.trim();
       if (!trimmedName || /[/?#@:]/.test(trimmedName)) continue;
       const domain = extractRootDomain(trimmedName);
-      if (!domain || domains.has(domain)) continue;
+      if (!domain || !isPlausibleBusinessDomain(domain) || domains.has(domain)) continue;
       const rawId = typeof row.id === "string" || typeof row.id === "number" ? String(row.id) : "";
       const certificateId = /^[a-z\d_-]{1,128}$/i.test(rawId) ? rawId : null;
       domains.set(domain, JSON.stringify({
