@@ -25,7 +25,7 @@ export async function findContact(domain: string): Promise<ContactInfo> {
 
   const normalized = publicBusinessDomain(domain);
   if (!normalized) return result;
-  const deadline = Date.now() + 45_000;
+  const deadline = Date.now() + 15_000;
   const seenEmails = new Set<string>();
   const mxByDomain = new Map<string, string[]>();
   const publicHosts = new Map<string, boolean>();
@@ -34,9 +34,7 @@ export async function findContact(domain: string): Promise<ContactInfo> {
     `https://${normalized}/contact`,
     `https://${normalized}/contact-us`,
     `https://${normalized}/about`,
-    `https://${normalized}/about-us`,
-    `https://www.${normalized}`,
-    `https://www.${normalized}/contact`,
+
   ];
 
   for (const url of pages) {
@@ -59,7 +57,7 @@ export async function findContact(domain: string): Promise<ContactInfo> {
           const linked = new URL(match[1], sourceUrl);
           linked.hash = "";
           if (/contact|about|get-in-touch/i.test(linked.pathname) &&
-            isBusinessWebsiteUrl(linked.href, normalized) && !pages.includes(linked.href) && pages.length < 10) {
+            isBusinessWebsiteUrl(linked.href, normalized) && !pages.includes(linked.href) && pages.length < 6) {
             pages.push(linked.href);
           }
         } catch { /* Invalid public link. */ }
@@ -128,7 +126,7 @@ function extractEmails(html: string, domain: string): string[] {
 
 async function fetchBusinessPage(url: string, domain: string, deadline: number, publicHosts: Map<string, boolean>): Promise<Response | null> {
   let current = url;
-  for (let redirects = 0; redirects < 4 && Date.now() < deadline; redirects++) {
+  for (let redirects = 0; redirects < 3 && Date.now() < deadline; redirects++) {
     if (!isBusinessWebsiteUrl(current, domain)) return null;
     const host = new URL(current).hostname;
     if (!publicHosts.has(host)) {
@@ -137,7 +135,7 @@ async function fetchBusinessPage(url: string, domain: string, deadline: number, 
     }
     if (!publicHosts.get(host)) return null;
     const response = await fetch(current, {
-      signal: AbortSignal.timeout(Math.max(1, Math.min(8_000, deadline - Date.now()))),
+      signal: AbortSignal.timeout(Math.max(1, Math.min(3_000, deadline - Date.now()))),
       headers: { "User-Agent": "Mozilla/5.0 (compatible; ZeroGravityAudit/1.0)", Accept: "text/html" },
       redirect: "manual",
     });
@@ -171,7 +169,7 @@ async function boundedDns<T>(lookup: Promise<T>): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([lookup, new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error("DNS lookup timed out.")), 2_500);
+      timer = setTimeout(() => reject(new Error("DNS lookup timed out.")), 1_000);
     })]);
   } finally { if (timer) clearTimeout(timer); }
 }
