@@ -17,13 +17,13 @@ export async function GET() {
     let totalCapitalSpent = 0;
 
     deals.forEach((deal) => {
-      grossVolume += parseFloat(deal.grossTransactionValue || "0");
       totalPotentialPipeline += parseFloat(deal.potentialValue || "0");
       totalCapitalSpent += parseFloat(deal.capitalSpent || "0");
     });
 
-    // Revenue must originate in a verified settlement record (Stripe webhook or audited reconciliation).
+    // Only verified settlement records count as gross receipts or revenue.
     const verifiedTransactions = txs.filter((tx) => tx.verified);
+    grossVolume = verifiedTransactions.reduce((sum, tx) => sum + parseFloat(tx.amount || "0"), 0);
     const totalRealizedRevenue = verifiedTransactions.reduce(
       (sum, tx) => sum + parseFloat(tx.amount || "0"),
       0
