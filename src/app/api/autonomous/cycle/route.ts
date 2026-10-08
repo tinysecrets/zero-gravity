@@ -10,6 +10,11 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
+function runnerAuthorized(request: Request): boolean {
+  const token = process.env.ZERO_GRAVITY_RUNNER_TOKEN;
+  return Boolean(token && request.headers.get("x-zero-gravity-runner") === token);
+}
+
 export async function GET() {
   try {
     const scheduler = await getStatus();
@@ -40,6 +45,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  if (!runnerAuthorized(request)) return NextResponse.json({ success: false, error: "Runner authorization required." }, { status: 401 });
   let config;
   try { config = parseCycleConfig(await request.json()); }
   catch (error) {
@@ -58,7 +64,8 @@ export async function POST(request: Request) {
   }
 }
 
-export async function DELETE() {
+export async function DELETE(request: Request) {
+  if (!runnerAuthorized(request)) return NextResponse.json({ success: false, error: "Runner authorization required." }, { status: 401 });
   try {
     const stopped = await requestCycleStop();
     return NextResponse.json({ success: stopped, ...(stopped ? { message: "Stop requested." } : { error: "No running cycle." }) }, { status: stopped ? 200 : 404 });
