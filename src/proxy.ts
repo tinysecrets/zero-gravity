@@ -58,13 +58,19 @@ export function proxy(request: NextRequest) {
 
   if (isProviderRoute(request)) return NextResponse.next();
 
-  const auth = operatorAuthState();
-  if (auth.misconfigured) return operatorConfigUnavailable();
-  if (auth.required && !validOperatorAuthorization(request)) {
-    return operatorAuthenticationRequired();
+  // Public application mode: Vercel/Basic Auth is disabled. Provider-bound
+  // routes above retain their own authentication. Browser mutations remain
+  // same-origin to prevent cross-site requests.
+  if (
+    process.env.OPERATOR_AUTH_REQUIRED === "true"
+  ) {
+    const auth = operatorAuthState();
+    if (auth.misconfigured) return operatorConfigUnavailable();
+    if (auth.required && !validOperatorAuthorization(request)) {
+      return operatorAuthenticationRequired();
+    }
   }
 
-  // Browser mutations also require a same-origin request to prevent CSRF.
   if (
     !["GET", "HEAD", "OPTIONS"].includes(request.method) &&
     !sameOriginRequest(request)
