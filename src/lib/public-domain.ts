@@ -24,6 +24,15 @@ export function publicBusinessDomain(input: string): string | null {
   return parsed.domain;
 }
 
+/** Reject certificate-search artifacts that look machine-generated rather than like a normal business domain. */
+export function isPlausibleBusinessDomain(domain: string): boolean {
+  const root = publicBusinessDomain(domain);
+  if (!root) return false;
+  const labels = root.split(".");
+  const name = labels[0] || "";
+  return !name.includes("--") && !/^(?:[a-z0-9]{1,4}-){2,}/i.test(name);
+}
+
 export function isBusinessWebsiteUrl(value: string, domain: string): boolean {
   try {
     const url = new URL(value);
