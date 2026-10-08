@@ -8,7 +8,7 @@ import { CYCLE_BUDGET_MS, defaultCycleConfig, parseCycleConfig, type CycleConfig
 import { db } from "@/db";
 import { opportunities, scanTargets, autonomousRuns, revenueEvents } from "@/db/schema";
 import { and, eq, ne, or, sql } from "drizzle-orm";
-import { claimDueFollowup } from "./sales-state";
+import { backfillFollowupSchedules, claimDueFollowup } from "./sales-state";
 
 export type { CycleConfig } from "./automation-config";
 export type StepType = "acquisition" | "scan" | "audit" | "decide" | "deal_created" | "outreach_generated" | "checkout_created" | "skipped";
@@ -134,6 +134,7 @@ export async function executeCycle(config: Partial<CycleConfig> = {}, options: {
       await persistRun(state);
     }
     if (state.status === "running" && fullConfig.autoSendOutreach && !await shouldStop()) {
+    await backfillFollowupSchedules();
     const followupCandidates = await db.select().from(opportunities)
       .where(eq(opportunities.outreachDeliveryStatus, "sent"))
       .orderBy(opportunities.updatedAt)
