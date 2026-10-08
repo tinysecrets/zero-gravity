@@ -185,3 +185,23 @@ export async function setDeliveryStatus(dealId: number, status: DeliveryStatus, 
   }).where(eq(opportunities.id, dealId));
   return true;
 }
+
+
+export async function backfillFollowupSchedules(now = new Date()) {
+  const rows = await db.select({ id: opportunities.id, auditData: opportunities.auditData, outreachDeliveryStatus: opportunities.outreachDeliveryStatus })
+    .from(opportunities).where(eq(opportunities.outreachDeliveryStatus, "sent")).limit(100);
+  for (const row of rows) {
+    const current = readSalesState(row.auditData);
+    if (current.optedOut || current.replyDisposition || current.followupCount >= MAX_FOLLOWUPS || current.nextFollowupAt || !current.lastContactedAt) continue;
+    const contactedAt = Date.parse(current.lastContactedAt);
+    const delay = FOLLOWUP_DELAYS_MS[current.followupCount];
+    if (!Number.isFinite(contactedAt) || !delay) continue;
+    const nextFollowupAt = new Date(contactedAt + delay).toISOString();
+    if (Date.parse(nextFollowupAt) > now.getTime()) {
+      let parsed: Record<string, unknown> = {};
+      try { parsed = JSON.parse(row.auditData || "{}") as Record<string, unknown>; } catch { /* leave malformed legacy records untouched */ }
+      const sales = { ...current, nextFollowupAt };
+      await db.update(opportunities).set({ auditData: JSON.stringify({ ...parsed, sales }), updatedAt: now }).where(eq(opportunities.id, row.id));
+    }
+  }
+}
