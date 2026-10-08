@@ -63,7 +63,7 @@ export async function markOutreachSent(
   const current = readSalesState(deal.auditData);
   if (current.optedOut || current.replyDisposition || current.stage === "paid" || current.stoppedReason === "payment_verified") return null;
   const followupCount = Math.min(MAX_FOLLOWUPS, current.followupCount + (mode === "followup" ? 1 : 0));
-  const delay = FOLLOWUP_DELAYS_MS[followupCount - 1];
+  const delay = FOLLOWUP_DELAYS_MS[followupCount];
   const next = delay ? new Date(now.getTime() + delay) : null;
   const sales: SalesState = {
     ...current,
