@@ -186,7 +186,9 @@ export async function runOnce(options: {
       ["accounting", "accounting"], ["medspa", "medspa"], ["realestate", "real_estate"],
       ["insurance", "insurance"],
     ] as const;
-    const niche = autonomousNiches[Math.floor(Date.now() / 86_400_000) % autonomousNiches.length];
+    // Advance the niche on every autonomous run so a fast unattended worker
+    // continuously explores different verticals instead of waiting a full day.
+    const niche = autonomousNiches[Math.max(0, claimed.totalRuns - 1) % autonomousNiches.length];
     // A terminated invocation may leave a run marked running after its lease expires.
     await db.update(autonomousRuns).set({
       status: "failed", error: "Execution lease expired before completion.", completedAt: now,
