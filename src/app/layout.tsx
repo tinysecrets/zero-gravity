@@ -4,7 +4,7 @@ import "./globals.css";
 import { Analytics } from "@vercel/analytics/next";
 
 export const metadata: Metadata = {
-  title: "YLA Industries | Zero Gravity",
+  title: "Wah-Lah | Zero Gravity",
   description:
     "A workspace for recording opportunities, reviewing public DNS signals, and requesting voluntary customer payments through Stripe Checkout. Figures are not forecasts or payout balances.",
 };
