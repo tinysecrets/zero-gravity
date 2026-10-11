@@ -56,6 +56,7 @@ describe("public sales inquiry capture", () => {
       message: "Please review our domain configuration.", website: "",
     }, "203.0.113.49"));
     expect(r.status).toBe(201);
+    expect(await r.json()).toMatchObject({ success: true, notificationStatus: "sent" });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const payload = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
     expect(payload).toMatchObject({
