@@ -31,7 +31,7 @@ export function PublicSalesPage() {
       const r = await fetch("/api/public/contact", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(inquiry) });
       const d = await r.json();
       if (!r.ok || !d.success) throw new Error(d.error || "Your inquiry could not be saved.");
-      setInquiry(empty); setInquiryMessage("Inquiry saved. The details will be used to respond to this request.");
+      setInquiry(empty); setInquiryMessage(d.notificationStatus === "sent" ? "Inquiry saved and the team notification email was accepted by the provider." : "Inquiry saved, but the team notification email was not confirmed. The request is stored in the private lead inbox.");
     } catch (e) { setInquiryError(true); setInquiryMessage(e instanceof Error ? e.message : "Unable to submit right now."); }
     finally { setBusyInquiry(false); }
   }
