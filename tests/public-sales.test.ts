@@ -13,7 +13,7 @@ beforeEach(async () => {
   vi.stubEnv("SALES_INBOX_EMAIL", "");
   vi.stubEnv("OUTREACH_REPLY_TO", "");
 });
-afterEach(() => vi.unstubAllEnvs());
+afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 afterAll(() => client.close());
 
 function req(body: Record<string, unknown>, ip: string) {
@@ -41,6 +41,31 @@ describe("public sales inquiry capture", () => {
       kind: "contact", status: "new", name: "Taylor Customer", email: "taylor@example.com",
       domain: "example.com", message: "Please review our domain configuration.",
     }]);
+  });
+
+
+  it("routes replies on the internal inquiry notification back to the customer", async () => {
+    vi.stubEnv("RESEND_API_KEY", "re_test_key");
+    vi.stubEnv("FROM_EMAIL", "notices@wah-lah.com");
+    vi.stubEnv("SALES_INBOX_EMAIL", "owner@example.net");
+    const fetchMock = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) =>
+      new Response(JSON.stringify({ id: "email_test_123" }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const r = await submitContact(req({
+      name: "Taylor Customer", email: "taylor@example.com", domain: "example.com",
+      message: "Please review our domain configuration.", website: "",
+    }, "203.0.113.49"));
+    expect(r.status).toBe(201);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const payload = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+    expect(payload).toMatchObject({
+      from: "notices@wah-lah.com",
+      to: ["owner@example.net"],
+      reply_to: "taylor@example.com",
+      subject: "New Zero Gravity service inquiry",
+    });
+    const [lead] = await db.select().from(contactLeads);
+    expect(lead.notificationStatus).toBe("sent");
   });
 
   it("rejects cross-origin and malformed requests", async () => {
