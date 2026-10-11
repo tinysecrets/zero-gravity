@@ -44,7 +44,7 @@ export async function POST(request: Request) {
         const response = await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: { Authorization: "Bearer " + apiKey, "Content-Type": "application/json", "Idempotency-Key": "zg-contact-" + lead.id },
-          body: JSON.stringify({ from, to: [to], subject: "New Zero Gravity service inquiry", text: "A new inquiry was saved in the private lead inbox.\n\nName: " + name + "\nEmail: " + email + "\nDomain: " + domain + "\nMessage:\n" + message + "\n\nLead ID: " + lead.id }),
+          body: JSON.stringify({ from, to: [to], reply_to: email, subject: "New Zero Gravity service inquiry", text: "A new inquiry was saved in the private lead inbox.\n\nName: " + name + "\nEmail: " + email + "\nDomain: " + domain + "\nMessage:\n" + message + "\n\nLead ID: " + lead.id }),
         });
         notificationStatus = response.ok ? "sent" : "failed";
       } catch { notificationStatus = "failed"; }
