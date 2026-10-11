@@ -115,7 +115,8 @@ describe("persistent Vercel scheduler", () => {
     expect(executeCycle).not.toHaveBeenCalled();
   });
   it("rejects malformed scheduler input rather than enabling unsafe defaults", async () => {
-    const response = await configureSchedule(new Request("https://zero-gravity.test/api/autonomous/schedule", { method: "POST", body: JSON.stringify({ autoSendOutreach: "true", intervalMinutes: "bad" }) }));
+    vi.stubEnv("ZERO_GRAVITY_RUNNER_TOKEN", "runner-fixture");
+    const response = await configureSchedule(new Request("https://zero-gravity.test/api/autonomous/schedule", { method: "POST", headers: { "x-zero-gravity-runner": "runner-fixture" }, body: JSON.stringify({ autoSendOutreach: "true", intervalMinutes: "bad" }) }));
     expect(response.status).toBe(400);
     expect(executeCycle).not.toHaveBeenCalled();
   });

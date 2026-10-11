@@ -58,17 +58,13 @@ export function proxy(request: NextRequest) {
 
   if (isProviderRoute(request)) return NextResponse.next();
 
-  // Public application mode: Vercel/Basic Auth is disabled. Provider-bound
-  // routes above retain their own authentication. Browser mutations remain
-  // same-origin to prevent cross-site requests.
-  if (
-    process.env.OPERATOR_AUTH_REQUIRED === "true"
-  ) {
-    const auth = operatorAuthState();
-    if (auth.misconfigured) return operatorConfigUnavailable();
-    if (auth.required && !validOperatorAuthorization(request)) {
-      return operatorAuthenticationRequired();
-    }
+  // Production management routes fail closed unless valid operator credentials
+  // are configured. Local development remains open only when neither credential
+  // is set; provider-bound routes above retain their own authentication.
+  const auth = operatorAuthState();
+  if (auth.misconfigured) return operatorConfigUnavailable();
+  if (auth.required && !validOperatorAuthorization(request)) {
+    return operatorAuthenticationRequired();
   }
 
   if (
