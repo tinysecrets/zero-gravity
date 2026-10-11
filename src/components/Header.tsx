@@ -54,7 +54,7 @@ export function Header({
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 text-zinc-400">
           <div className="flex flex-wrap items-center gap-3">
             <span className="font-mono font-semibold uppercase tracking-wider text-zinc-300">
-              ZERO GRAVITY · YLA INDUSTRIES
+              ZERO GRAVITY · WAH-LAH
             </span>
             <span className="hidden text-zinc-600 md:inline-block">|</span>
             <span className="hidden items-center gap-1 text-zinc-400 md:inline-flex">
@@ -89,7 +89,7 @@ export function Header({
             </h1>
           </div>
           <p className="mt-0.5 text-xs text-zinc-400">
-            Built by Justin Smith · YLA Industries. Recorded opportunities, technical checks, and optional customer-initiated Stripe Checkout. Amounts are not payouts.
+            Built by Justin Smith · Wah-Lah. Recorded opportunities, technical checks, and optional customer-initiated Stripe Checkout. Amounts are not payouts.
           </p>
         </div>
 
