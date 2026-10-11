@@ -2,6 +2,12 @@
 
 A Next.js/PostgreSQL workflow for discovering public business domains, verifying published business contacts, auditing DNS, drafting service offers, generating customer-approved Stripe Checkout payments, and recording signed payment events. **It does not transfer funds out, make bank payouts, guarantee revenue, or perform customer DNS changes.** A checkout link is not a payment; a confirmed card payment is not a confirmed bank payout. The ledger records gross confirmed receipts, not an available account balance; provider fees, refunds, and disputes are not automatically reconciled.
 
+## Public sales page and lead capture
+
+The production root URL is a public customer page for a clearly scoped, one-time $149 Domain Signals Review (one authorized domain). It covers public SPF/DKIM/DMARC and relevant MX observations plus a prioritized written checklist; it does not guarantee inbox placement, revenue, security outcomes, or regulatory compliance and does not change DNS. Customers must confirm payment on Stripe-hosted Checkout. A checkout URL alone is not a receipt.
+
+The private operations workspace is at /dashboard; its lead inbox is /dashboard/leads. Both remain behind OPERATOR_USERNAME / OPERATOR_PASSWORD. Public inquiry records are persisted in PostgreSQL. Contact notifications use Resend only when RESEND_API_KEY, verified FROM_EMAIL, and a recipient are configured; optional SALES_INBOX_EMAIL takes priority, with OUTREACH_REPLY_TO as a fallback. Public forms enforce same-origin requests, field validation, a honeypot, and a basic per-process rate limit. That rate limiter is a secondary anti-abuse control, not a globally shared WAF.
+
 ## Enable autonomous collection on the existing Vercel project
 
 Configure these under **Vercel → Project → Settings → Environment Variables → Production**. Do not put credentials in source control or chat.

@@ -17,6 +17,7 @@ export async function createPaymentCheckout(input: {
   opportunityId?: number | null;
   amount: number | string;
   clientName: string;
+  customerEmail?: string;
   serviceDescription: string;
   requestUrl?: string;
   reusePending?: boolean;
@@ -68,6 +69,7 @@ export async function createPaymentCheckout(input: {
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
     payment_method_types: ["card"],
+    ...(input.customerEmail ? { customer_email: input.customerEmail } : {}),
     line_items: [{
       quantity: 1,
       price_data: {

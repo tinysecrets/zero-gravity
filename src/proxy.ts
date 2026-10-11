@@ -6,7 +6,8 @@ import { operatorAuthState, sameOriginRequest, validOperatorAuthorization } from
 // signature, or an unguessable Checkout Session ID.
 function isProviderRoute(request: NextRequest): boolean {
   const path = request.nextUrl.pathname;
-  return path === "/api/health" || path === "/api/health/email" ||
+  return path === "/api/public/contact" || path === "/api/public/checkout" ||
+    path === "/api/health" || path === "/api/health/email" ||
     path === "/api/autonomous/cron" ||
     path === "/api/payments/webhook" ||
     path === "/api/webhook/stripe" ||
@@ -55,6 +56,9 @@ export function proxy(request: NextRequest) {
     process.env.ALLOW_PREVIEW_OPERATIONS !== "true" &&
     !previewRouteIsReadOnly(request)
   ) return previewOperationsDisabled();
+
+  // Public service page is separate from the authenticated operator workspace.
+  if (request.nextUrl.pathname === "/") return NextResponse.next();
 
   if (isProviderRoute(request)) return NextResponse.next();
 

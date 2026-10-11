@@ -23,6 +23,6 @@ export async function resetDatabase(overrides: Record<string, string> = {}) {
   };
   for (const [key, value] of Object.entries(env)) vi.stubEnv(key, value);
   delete (globalThis as typeof globalThis & { __zeroGravityDbInitialization?: unknown }).__zeroGravityDbInitialization;
-  await client.exec(`TRUNCATE scheduler_settings, autonomous_runs, scan_targets, payment_requests,
+  await client.exec(`TRUNCATE contact_leads, scheduler_settings, autonomous_runs, scan_targets, payment_requests,
     financial_transactions, revenue_events, monitoring_subscriptions, opportunities, audits, playbooks RESTART IDENTITY CASCADE;`);
 }

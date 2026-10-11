@@ -1,5 +1,13 @@
 // Idempotent schema setup, shared by the application and database integration tests.
 export const DATABASE_SETUP_SQL = `
+      CREATE TABLE IF NOT EXISTS contact_leads (
+        id SERIAL PRIMARY KEY, kind TEXT NOT NULL DEFAULT 'contact', status TEXT NOT NULL DEFAULT 'new',
+        name TEXT NOT NULL, email TEXT NOT NULL, company TEXT, domain TEXT, message TEXT,
+        payment_reference TEXT, notification_status TEXT NOT NULL DEFAULT 'not_requested',
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(), updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS contact_leads_created_at_idx ON contact_leads (created_at DESC);
+
       CREATE TABLE IF NOT EXISTS opportunities (
         id SERIAL PRIMARY KEY,
         title TEXT NOT NULL,

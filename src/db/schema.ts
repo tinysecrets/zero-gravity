@@ -1,5 +1,20 @@
 import { pgTable, serial, text, timestamp, numeric, integer, boolean } from "drizzle-orm/pg-core";
 
+export const contactLeads = pgTable("contact_leads", {
+  id: serial("id").primaryKey(),
+  kind: text("kind").notNull().default("contact"),
+  status: text("status").notNull().default("new"),
+  name: text("name").notNull(),
+  email: text("email").notNull(),
+  company: text("company"),
+  domain: text("domain"),
+  message: text("message"),
+  paymentReference: text("payment_reference"),
+  notificationStatus: text("notification_status").notNull().default("not_requested"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 export const opportunities = pgTable("opportunities", {
   id: serial("id").primaryKey(),
   title: text("title").notNull(),

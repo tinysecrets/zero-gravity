@@ -93,7 +93,8 @@ describe("request authentication", () => {
   it("protects the dashboard and management APIs with production Basic Auth", () => {
     clearEnv();
     vi.stubEnv("NODE_ENV", "production");
-    for (const path of ["/", "/api/autonomous/schedule", "/api/payments?reference=INV-123"]) {
+    expect(proxy(new NextRequest("https://example.test/"))?.status).toBe(200);
+    for (const path of ["/dashboard", "/api/autonomous/schedule", "/api/payments?reference=INV-123"]) {
       const response = proxy(new NextRequest(`https://example.test${path}`));
       expect(response?.status).toBe(503);
       expect(response?.headers.get("cache-control")).toBe("no-store");
@@ -102,7 +103,7 @@ describe("request authentication", () => {
     vi.stubEnv("OPERATOR_USERNAME", "operator");
     vi.stubEnv("OPERATOR_PASSWORD", "a-long-random-password-fixture-with-at-least-32-chars");
     const authorization = `Basic ${Buffer.from("operator:a-long-random-password-fixture-with-at-least-32-chars").toString("base64")}`;
-    for (const path of ["/", "/api/autonomous/schedule", "/api/payments?reference=INV-123"]) {
+    for (const path of ["/dashboard", "/api/autonomous/schedule", "/api/payments?reference=INV-123"]) {
       expect(proxy(new NextRequest(`https://example.test${path}`, { headers: { authorization } }))?.status).toBe(200);
     }
     const rejected = proxy(new NextRequest("https://example.test/api/autonomous/schedule", {
@@ -113,14 +114,16 @@ describe("request authentication", () => {
   });
   it("keeps an unconfigured local dashboard convenient but fails closed on partial credentials", () => {
     clearEnv();
+    expect(proxy(new NextRequest("https://example.test/dashboard"))?.status).toBe(200);
     expect(proxy(new NextRequest("https://example.test/"))?.status).toBe(200);
     vi.stubEnv("OPERATOR_USERNAME", "operator");
-    expect(proxy(new NextRequest("https://example.test/"))?.status).toBe(503);
+    expect(proxy(new NextRequest("https://example.test/dashboard"))?.status).toBe(503);
+    expect(proxy(new NextRequest("https://example.test/"))?.status).toBe(200);
     vi.stubEnv("OPERATOR_PASSWORD", "too-short");
-    expect(proxy(new NextRequest("https://example.test/"))?.status).toBe(503);
+    expect(proxy(new NextRequest("https://example.test/dashboard"))?.status).toBe(503);
     vi.stubEnv("OPERATOR_USERNAME", "invalid:name");
     vi.stubEnv("OPERATOR_PASSWORD", "a-long-random-password-fixture-with-at-least-32-chars");
-    expect(proxy(new NextRequest("https://example.test/"))?.status).toBe(503);
+    expect(proxy(new NextRequest("https://example.test/dashboard"))?.status).toBe(503);
   });
   it("disables Preview operations by default to protect a shared Production database", () => {
     clearEnv();
@@ -136,6 +139,15 @@ describe("request authentication", () => {
     vi.stubEnv("OPERATOR_PASSWORD", "a-long-random-password-fixture-with-at-least-32-chars");
     const authorization = `Basic ${Buffer.from("operator:a-long-random-password-fixture-with-at-least-32-chars").toString("base64")}`;
     expect(proxy(new NextRequest("https://example.test/api/autonomous/schedule", { headers: { authorization } }))?.status).toBe(200);
+  });
+  it("keeps public sales open and protects the dashboard and private lead inbox", () => {
+    clearEnv(); vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("OPERATOR_USERNAME", "operator");
+    vi.stubEnv("OPERATOR_PASSWORD", "a-long-random-password-fixture-with-at-least-32-chars");
+    expect(proxy(new NextRequest("https://example.test/"))?.status).toBe(200);
+    expect(proxy(new NextRequest("https://example.test/dashboard"))?.status).toBe(401);
+    expect(proxy(new NextRequest("https://example.test/dashboard/leads"))?.status).toBe(401);
+    expect(proxy(new NextRequest("https://example.test/api/private/leads"))?.status).toBe(401);
   });
   it("keeps signed-provider routes directly reachable without operator credentials", () => {
     clearEnv();

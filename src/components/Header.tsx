@@ -94,6 +94,7 @@ export function Header({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <a href="/dashboard/leads" className="rounded-lg border border-teal-800/60 bg-teal-950/40 px-3 py-1.5 font-mono text-xs text-teal-200 transition hover:border-teal-500/60">Lead inbox</a>
           <button
             onClick={onOpenPayment}
             className="flex cursor-pointer items-center gap-1.5 rounded-lg bg-gradient-to-r from-emerald-700 to-teal-700 px-3.5 py-1.5 font-mono text-xs font-bold text-white shadow-lg shadow-emerald-950/40 transition hover:from-emerald-600 hover:to-teal-600"

@@ -15,7 +15,7 @@ vi.mock("stripe", async (importOriginal) => {
 
 import Stripe from "stripe";
 import { client, db, resetDatabase, setupDatabase } from "./database";
-import { financialTransactions, opportunities, paymentRequests, revenueEvents } from "@/db/schema";
+import { contactLeads, financialTransactions, opportunities, paymentRequests, revenueEvents } from "@/db/schema";
 import { ensureDbInitialized } from "@/lib/db-seed";
 import { amountToCents, createPaymentCheckout } from "@/lib/payment-checkout";
 import { recordStripePayment } from "@/lib/payment-settlement";
@@ -110,6 +110,16 @@ describe("hosted checkout creation", () => {
 });
 
 describe("atomic payment recording", () => {
+  it("marks the related public checkout lead paid only after the verified live payment", async () => {
+    const invoice = await fixtureInvoice();
+    await db.insert(contactLeads).values({
+      kind: "checkout", status: "checkout_created", name: "Test Buyer", email: "buyer@example.com",
+      domain: "example.com", paymentReference: invoice.referenceCode, notificationStatus: "not_requested",
+    });
+    await recordStripePayment(sessionFor(invoice));
+    expect((await db.select().from(contactLeads))[0].status).toBe("paid");
+  });
+
   it("records concurrent paid-event retries exactly once", async () => {
     const invoice = await fixtureInvoice();
     const session = sessionFor(invoice);

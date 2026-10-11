@@ -1,6 +1,6 @@
 import type Stripe from "stripe";
 import { db } from "@/db";
-import { financialTransactions, opportunities, paymentRequests, revenueEvents } from "@/db/schema";
+import { contactLeads, financialTransactions, opportunities, paymentRequests, revenueEvents } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { amountToCents } from "./payment-checkout";
 
@@ -55,11 +55,15 @@ export async function recordStripePayment(session: Stripe.Checkout.Session): Pro
       invoice.livemode !== session.livemode) {
       throw new PaymentEventError("Stripe session, invoice reference, amount, currency, or payment mode does not match the saved invoice.");
     }
-    if (invoice.status === "paid" || invoice.transactionId) return { received: true, idempotent: true, paymentRecorded: false, livemode: session.livemode };
+    if (invoice.status === "paid" || invoice.transactionId) {
+      await tx.update(contactLeads).set({ status: session.livemode ? "paid" : "test_paid", updatedAt: new Date() }).where(eq(contactLeads.paymentReference, invoice.referenceCode));
+      return { received: true, idempotent: true, paymentRecorded: false, livemode: session.livemode };
+    }
 
     if (!session.livemode) {
       // Test card events confirm the test invoice only; never contaminate cash metrics.
       await tx.update(paymentRequests).set({ status: "paid", paidAt: new Date(), updatedAt: new Date() }).where(eq(paymentRequests.id, id));
+      await tx.update(contactLeads).set({ status: "test_paid", updatedAt: new Date() }).where(eq(contactLeads.paymentReference, invoice.referenceCode));
       return { received: true, paymentRecorded: true, livemode: false, opportunityId: invoice.opportunityId, amount: invoice.amount, currency: invoice.currency, referenceCode: invoice.referenceCode, clientName: invoice.clientName, serviceDescription: invoice.serviceDescription };
     }
 
@@ -74,6 +78,7 @@ export async function recordStripePayment(session: Stripe.Checkout.Session): Pro
     await tx.update(paymentRequests).set({
       status: "paid", transactionId: receipt.id, paidAt: new Date(), updatedAt: new Date(),
     }).where(eq(paymentRequests.id, id));
+    await tx.update(contactLeads).set({ status: "paid", updatedAt: new Date() }).where(eq(contactLeads.paymentReference, invoice.referenceCode));
     if (deal) {
       // Database arithmetic also protects against different invoices paid concurrently.
       await tx.update(opportunities).set({
