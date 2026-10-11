@@ -84,12 +84,18 @@ export async function recordStripePayment(session: Stripe.Checkout.Session): Pro
       await tx.update(opportunities).set({
         status: "revenue_collected", realizedRevenue: sql`${opportunities.realizedRevenue} + ${invoice.amount}::numeric`, updatedAt: new Date(),
       }).where(eq(opportunities.id, deal.id));
-      await tx.insert(revenueEvents).values({
-        opportunityId: deal.id, transactionId: receipt.id, industry: deal.targetNiche,
-        offerTier: deal.offerTier, acquisitionSource: deal.acquisitionSource, amount: invoice.amount,
-        eventType: "payment_verified",
-      });
     }
+    await tx.insert(revenueEvents).values({
+      opportunityId: deal?.id ?? null,
+      transactionId: receipt.id,
+      industry: deal?.targetNiche ?? "professional_services",
+      offerTier: deal?.offerTier ?? "domain_signals_review",
+      acquisitionSource: deal?.acquisitionSource ?? "public_sales_page",
+      contactType: deal ? "opportunity" : "direct_customer",
+      channel: "stripe_checkout",
+      amount: invoice.amount,
+      eventType: "payment_verified",
+    });
     return { received: true, paymentRecorded: true, livemode: true, opportunityId: invoice.opportunityId, amount: invoice.amount, currency: invoice.currency, referenceCode: invoice.referenceCode, clientName: invoice.clientName, serviceDescription: invoice.serviceDescription };
   });
 }

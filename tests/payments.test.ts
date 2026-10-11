@@ -32,9 +32,9 @@ beforeEach(async () => {
 afterEach(async () => { await client.exec("ALTER TABLE revenue_events DROP CONSTRAINT IF EXISTS simulated_failure;"); vi.unstubAllEnvs(); });
 afterAll(() => client.close());
 
-async function fixtureInvoice(options: { amount?: string; livemode?: boolean; dealId?: number } = {}) {
+async function fixtureInvoice(options: { amount?: string; livemode?: boolean; dealId?: number; direct?: boolean } = {}) {
   await ensureDbInitialized();
-  const [deal] = options.dealId ? [{ id: options.dealId }] : await db.insert(opportunities).values({
+  const [deal] = options.dealId ? [{ id: options.dealId }] : options.direct ? [{ id: null }] : await db.insert(opportunities).values({
     title: "Approved service", vector: "technical_leak_audit", targetCompany: "business.test",
     targetContact: "Public contact", targetNiche: "Business", potentialValue: options.amount || "350.00", status: "audited",
   }).returning();
@@ -117,6 +117,21 @@ describe("atomic payment recording", () => {
       domain: "example.com", paymentReference: invoice.referenceCode, notificationStatus: "not_requested",
     });
     await recordStripePayment(sessionFor(invoice));
+    expect((await db.select().from(contactLeads))[0].status).toBe("paid");
+  });
+
+  it("attributes a direct public sales payment without requiring a CRM opportunity", async () => {
+    const invoice = await fixtureInvoice({ direct: true });
+    await db.insert(contactLeads).values({
+      kind: "checkout", status: "checkout_created", name: "Direct Buyer", email: "direct@example.com",
+      domain: "example.com", paymentReference: invoice.referenceCode, notificationStatus: "not_requested",
+    });
+    expect(await recordStripePayment(sessionFor(invoice))).toMatchObject({ paymentRecorded: true, livemode: true, opportunityId: null });
+    expect(await db.select().from(financialTransactions)).toHaveLength(1);
+    expect(await db.select().from(revenueEvents)).toMatchObject([{
+      opportunityId: null, eventType: "payment_verified", acquisitionSource: "public_sales_page",
+      offerTier: "domain_signals_review", contactType: "direct_customer", channel: "stripe_checkout",
+    }]);
     expect((await db.select().from(contactLeads))[0].status).toBe("paid");
   });
 
