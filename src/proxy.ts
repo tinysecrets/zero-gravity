@@ -6,7 +6,7 @@ import { operatorAuthState, sameOriginRequest, validOperatorAuthorization } from
 // signature, or an unguessable Checkout Session ID.
 function isProviderRoute(request: NextRequest): boolean {
   const path = request.nextUrl.pathname;
-  return path === "/api/health" ||
+  return path === "/api/health" || path === "/api/health/email" ||
     path === "/api/autonomous/cron" ||
     path === "/api/payments/webhook" ||
     path === "/api/webhook/stripe" ||
