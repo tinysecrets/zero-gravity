@@ -13,7 +13,17 @@ export async function POST(request: Request) {
   let name = "", email = "", domain = "", message = "";
   try {
     const body = await request.json() as Record<string, unknown>;
-    if (typeof body.website === "string" && body.website.trim()) return NextResponse.json({ success: true }, { headers: { "Cache-Control": "no-store" } });
+    if (typeof body.website === "string" && body.website.trim()) {
+      // Honeypot requests remain invisible to the lead inbox and email sender.
+      // The idempotent initializer also brings forward additive schema setup
+      // on a fresh deployment without creating a fake customer or charge.
+      try {
+        await ensureDbInitialized();
+      } catch {
+        return NextResponse.json({ success: false }, { status: 503, headers: { "Cache-Control": "no-store" } });
+      }
+      return NextResponse.json({ success: true }, { headers: { "Cache-Control": "no-store" } });
+    }
     name = typeof body.name === "string" ? body.name.trim().slice(0, 120) : "";
     email = typeof body.email === "string" ? body.email.trim().toLowerCase().slice(0, 254) : "";
     domain = typeof body.domain === "string" ? validRequestedDomain(body.domain) : "";

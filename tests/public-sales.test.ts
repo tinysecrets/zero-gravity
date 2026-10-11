@@ -85,5 +85,6 @@ describe("public sales inquiry capture", () => {
     }, "203.0.113.48"));
     expect(r.status).toBe(200);
     expect(await db.select().from(contactLeads)).toHaveLength(0);
+    expect((globalThis as typeof globalThis & { __zeroGravityDbInitialization?: unknown }).__zeroGravityDbInitialization).toBeDefined();
   });
 });
