@@ -50,7 +50,7 @@ export async function POST(request: Request) {
       } catch { notificationStatus = "failed"; }
     }
     await db.update(contactLeads).set({ notificationStatus, updatedAt: new Date() }).where(eq(contactLeads.id, lead.id));
-    return NextResponse.json({ success: true, leadId: lead.id }, { status: 201, headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ success: true, leadId: lead.id, notificationStatus }, { status: 201, headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     console.error("Public inquiry save failed:", error instanceof Error ? error.message : "unknown error");
     return NextResponse.json({ success: false, error: "Inquiry storage is temporarily unavailable. Please try again." }, { status: 503, headers: { "Cache-Control": "no-store" } });
