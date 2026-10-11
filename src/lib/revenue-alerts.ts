@@ -8,7 +8,7 @@ export async function sendRevenueAlert(input: {
 }) {
   const key = process.env.RESEND_API_KEY;
   const from = process.env.FROM_EMAIL;
-  const recipient = process.env.REVENUE_ALERT_EMAIL;
+  const recipient = process.env.REVENUE_ALERT_EMAIL || process.env.SALES_INBOX_EMAIL || process.env.OUTREACH_REPLY_TO;
   if (!key || !from || !recipient) return { sent: false, reason: "Revenue alert email is not configured." };
   if (!/^\S+@\S+\.\S+$/.test(from) || !/^\S+@\S+\.\S+$/.test(recipient)) {
     return { sent: false, reason: "Revenue alert addresses are invalid." };
