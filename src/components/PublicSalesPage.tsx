@@ -42,7 +42,7 @@ export function PublicSalesPage() {
     <div className="pointer-events-none fixed inset-0 opacity-60" aria-hidden="true"><div className="absolute -top-40 left-1/3 h-96 w-96 rounded-full bg-teal-500/10 blur-3xl"/><div className="absolute right-0 top-1/3 h-96 w-96 rounded-full bg-violet-500/10 blur-3xl"/></div>
     <div className="relative">
       <header className="mx-auto flex max-w-7xl items-center justify-between px-5 py-6 md:px-8">
-        <Link href="/" className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl border border-teal-200/30 bg-teal-300/10 text-teal-200"><svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.6"><circle cx="12" cy="12" r="8.5"/><ellipse cx="12" cy="12" rx="4" ry="8.5" transform="rotate(48 12 12)"/><path d="M4 12h16"/></svg></span><span><span className="block text-sm font-semibold tracking-[0.22em]">ZERO GRAVITY</span><span className="block text-[10px] tracking-[0.18em] text-zinc-500">TECHNICAL CLARITY</span></span></Link>
+        <Link href="/" className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl border border-teal-200/30 bg-teal-300/10 text-teal-200"><svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.6"><circle cx="12" cy="12" r="8.5"/><ellipse cx="12" cy="12" rx="4" ry="8.5" transform="rotate(48 12 12)"/><path d="M4 12h16"/></svg></span><span><span className="block text-sm font-semibold tracking-[0.22em]">ZERO GRAVITY</span><span className="block text-[10px] tracking-[0.18em] text-zinc-500">YLA INDUSTRIES · JUSTIN SMITH</span></span></Link>
         <nav className="flex items-center gap-4"><a href="#scope" className="hidden text-sm text-zinc-400 hover:text-white sm:inline">What&apos;s included</a><a href="/dashboard" className="rounded-full border border-white/10 px-4 py-2 text-xs text-zinc-300 hover:border-teal-200/40">Operator sign-in</a></nav>
       </header>
       <section className="mx-auto grid max-w-7xl items-center gap-12 px-5 pb-16 pt-10 md:grid-cols-[1.1fr_0.9fr] md:px-8 md:pb-24 md:pt-16">
@@ -89,7 +89,7 @@ export function PublicSalesPage() {
           <button type="submit" disabled={busyInquiry} className="rounded-xl border border-white/15 px-5 py-3 text-sm font-medium hover:border-teal-200/50 disabled:opacity-60">{busyInquiry?"Saving inquiry…":"Send inquiry"}</button>
         </form>
       </div></section>
-      <footer className="mx-auto flex max-w-7xl flex-col gap-4 px-5 py-8 text-xs text-zinc-500 sm:flex-row sm:items-center sm:justify-between md:px-8"><span>© {new Date().getFullYear()} Zero Gravity · Technical review services</span><span>One-time service · No guaranteed outcomes · Customer-approved payments only</span></footer>
+      <footer className="mx-auto flex max-w-7xl flex-col gap-4 px-5 py-8 text-xs text-zinc-500 sm:flex-row sm:items-center sm:justify-between md:px-8"><span>© {new Date().getFullYear()} YLA Industries · Zero Gravity · Justin Smith</span><span>One-time service · No guaranteed outcomes · Customer-approved payments only</span></footer>
     </div>
   </main>;
 }
