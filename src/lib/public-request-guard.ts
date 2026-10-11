@@ -8,7 +8,9 @@ export function allowPublicSubmission(request: Request, channel: string, now = D
   if (request.method !== "POST" || !request.headers.get("content-type")?.toLowerCase().startsWith("application/json")) return false;
   if (Number(request.headers.get("content-length") || "0") > 12_000) return false;
   if (!request.headers.get("origin") || !sameOriginRequest(request)) return false;
-  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || request.headers.get("x-real-ip") || "unknown";
+  // On Vercel, x-real-ip is set by the edge. Do not let a caller-controlled
+  // leading x-forwarded-for entry override that trusted address.
+  const ip = request.headers.get("x-real-ip")?.trim() || request.headers.get("x-forwarded-for")?.split(",").at(-1)?.trim() || "unknown";
   const key = channel + ":" + ip;
   const recent = (buckets.get(key)?.timestamps || []).filter((stamp) => now - stamp < 60_000);
   if (recent.length >= 8) return false;

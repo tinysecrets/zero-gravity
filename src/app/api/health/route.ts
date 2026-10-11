@@ -1,12 +1,12 @@
 import { db } from "@/db";
-import { autonomousRuns, financialTransactions, opportunities, paymentRequests, revenueEvents, scanTargets, schedulerSettings } from "@/db/schema";
+import { autonomousRuns, contactLeads, financialTransactions, opportunities, paymentRequests, revenueEvents, scanTargets, schedulerSettings } from "@/db/schema";
 import { getTableColumns, getTableName, sql } from "drizzle-orm";
 import { automationReadiness, defaultCycleConfig } from "@/lib/automation-config";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const requiredTables = [schedulerSettings, autonomousRuns, scanTargets, opportunities, paymentRequests, revenueEvents, financialTransactions];
+const requiredTables = [schedulerSettings, autonomousRuns, scanTargets, opportunities, paymentRequests, revenueEvents, financialTransactions, contactLeads];
 
 export async function GET() {
   const readiness = automationReadiness(defaultCycleConfig());

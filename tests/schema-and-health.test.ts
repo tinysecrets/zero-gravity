@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 vi.mock("@/db", async () => { const fixture = await import("./database"); return { db: fixture.db }; });
 
 import { client, db, resetDatabase, setupDatabase } from "./database";
-import { autonomousRuns, financialTransactions, opportunities, paymentRequests, revenueEvents, scanTargets, schedulerSettings } from "@/db/schema";
+import { autonomousRuns, contactLeads, financialTransactions, opportunities, paymentRequests, revenueEvents, scanTargets, schedulerSettings } from "@/db/schema";
 import { ensureDbInitialized } from "@/lib/db-seed";
 import { GET as health } from "@/app/api/health/route";
 
@@ -11,6 +11,7 @@ beforeAll(setupDatabase);
 beforeEach(() => resetDatabase());
 afterEach(async () => {
   await client.exec("ALTER TABLE scan_targets ADD COLUMN IF NOT EXISTS source_evidence TEXT;");
+  await client.exec("ALTER TABLE contact_leads ADD COLUMN IF NOT EXISTS notification_status TEXT NOT NULL DEFAULT 'not_requested';");
   vi.unstubAllEnvs();
 });
 afterAll(() => client.close());
@@ -24,6 +25,7 @@ describe("production schema and read-only health", () => {
     expect(await db.select().from(schedulerSettings)).toHaveLength(0);
     expect(await db.select().from(scanTargets)).toHaveLength(0);
     expect(await db.select().from(autonomousRuns)).toHaveLength(0);
+    expect(await db.select().from(contactLeads)).toHaveLength(0);
   });
 
   it("does not mistake database connectivity for a complete production schema", async () => {
@@ -31,6 +33,16 @@ describe("production schema and read-only health", () => {
     const response = await health();
     expect(response.status).toBe(503);
     expect(await response.json()).toMatchObject({ database: "connected", schema: { ready: false, missing: ["scan_targets.source_evidence"] } });
+  });
+
+  it("includes public lead-inbox columns in the read-only production schema check", async () => {
+    await client.exec("ALTER TABLE contact_leads DROP COLUMN notification_status;");
+    const response = await health();
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({
+      database: "connected",
+      schema: { ready: false, missing: ["contact_leads.notification_status"] },
+    });
   });
 
   it("fails closed without database configuration and never exposes its credentials", async () => {

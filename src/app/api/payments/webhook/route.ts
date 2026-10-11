@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { db } from "@/db";
-import { paymentRequests } from "@/db/schema";
+import { contactLeads, paymentRequests } from "@/db/schema";
 import { and, eq, ne } from "drizzle-orm";
 import { ensureDbInitialized } from "@/lib/db-seed";
 import { stripeLivemode } from "@/lib/automation-config";
@@ -38,9 +38,19 @@ export async function POST(request: Request) {
     // never starts the engine or sends email as a webhook side effect.
     await ensureDbInitialized();
     if (event.type === "checkout.session.expired") {
-      await db.update(paymentRequests).set({ status: "expired", updatedAt: new Date() }).where(and(
-        eq(paymentRequests.providerSessionId, session.id), ne(paymentRequests.status, "paid"),
-      ));
+      // Serialize with the paid-event path so an expiration retry cannot turn a
+      // just-paid lead back into an abandoned checkout.
+      await db.transaction(async (tx) => {
+        const [invoice] = await tx.select().from(paymentRequests)
+          .where(eq(paymentRequests.providerSessionId, session.id)).limit(1).for("update");
+        if (!invoice || invoice.status === "paid" || invoice.transactionId) return;
+        await tx.update(paymentRequests)
+          .set({ status: "expired", updatedAt: new Date() })
+          .where(and(eq(paymentRequests.id, invoice.id), ne(paymentRequests.status, "paid")));
+        await tx.update(contactLeads)
+          .set({ status: "checkout_expired", updatedAt: new Date() })
+          .where(eq(contactLeads.paymentReference, invoice.referenceCode));
+      });
       return NextResponse.json({ received: true });
     }
     const result = await recordStripePayment(session);

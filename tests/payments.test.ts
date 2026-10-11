@@ -228,6 +228,32 @@ describe("signed webhook handling", () => {
     expect((await webhook(signedRequest(sessionFor(invoice), "checkout.session.expired"))).status).toBe(200);
     expect((await db.select().from(paymentRequests))[0].status).toBe("paid");
   });
+
+  it("marks the linked lead abandoned when its unpaid checkout expires", async () => {
+    const invoice = await fixtureInvoice({ livemode: false });
+    await db.insert(contactLeads).values({
+      kind: "checkout", status: "checkout_created", name: "Abandoned Buyer",
+      email: "buyer@example.com", domain: "example.com",
+      paymentReference: invoice.referenceCode, notificationStatus: "not_requested",
+    });
+    const unpaidSession = sessionFor(invoice, { payment_status: "unpaid" });
+    expect((await webhook(signedRequest(unpaidSession, "checkout.session.expired"))).status).toBe(200);
+    expect((await db.select().from(paymentRequests))[0].status).toBe("expired");
+    expect((await db.select().from(contactLeads))[0].status).toBe("checkout_expired");
+  });
+
+  it("does not mark a paid lead abandoned when an expiration event arrives late", async () => {
+    const invoice = await fixtureInvoice({ livemode: false });
+    await db.insert(contactLeads).values({
+      kind: "checkout", status: "checkout_created", name: "Paid Buyer",
+      email: "buyer@example.com", domain: "example.com",
+      paymentReference: invoice.referenceCode, notificationStatus: "not_requested",
+    });
+    await recordStripePayment(sessionFor(invoice));
+    expect((await webhook(signedRequest(sessionFor(invoice, { payment_status: "unpaid" }), "checkout.session.expired"))).status).toBe(200);
+    expect((await db.select().from(paymentRequests))[0].status).toBe("paid");
+    expect((await db.select().from(contactLeads))[0].status).toBe("test_paid");
+  });
 });
 
 
