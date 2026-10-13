@@ -17,6 +17,9 @@ function request(body: unknown) {
 describe("AI advisor model integration", () => {
   it("keeps the template fallback working without a provider key", async () => {
     vi.stubEnv("OPENROUTER_API_KEY", "");
+    const mockFetch = vi.fn();
+    vi.stubGlobal("fetch", mockFetch);
+
     const response = await POST(request({ niche: "auto repair", location: "Montgomery" }));
     const body = await response.json();
 
@@ -25,7 +28,7 @@ describe("AI advisor model integration", () => {
     expect(body.generation.mode).toBe("template");
     expect(body.strategy.title).toContain("auto repair");
     expect(body.strategy.targetProfile).toContain("No business or prospect has been searched for or verified");
-    expect(fetch).not.toHaveBeenCalled();
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
   it("uses the configured free model server-side and preserves the advisor response shape", async () => {
@@ -60,7 +63,7 @@ describe("AI advisor model integration", () => {
     expect(JSON.parse(String(options.body)).model).toBe("nvidia/nemotron-3.5-lightning:free");
   });
 
-  it("falls back to the template for provider errors or invalid model JSON", async () => {
+  it("falls back to the template for provider errors without leaking provider keys", async () => {
     vi.stubEnv("OPENROUTER_API_KEY", "provider-test-key");
     const mockFetch = vi.fn().mockResolvedValue(new Response("temporary provider failure", { status: 429 }));
     vi.stubGlobal("fetch", mockFetch);
