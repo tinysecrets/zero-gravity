@@ -1,6 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { POST as createStrategyDraft } from "@/app/api/ai-advisor/route";
 import { INITIAL_OPPORTUNITIES, SEED_PLAYBOOKS } from "@/lib/seed-data";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+});
+
 
 describe("public planning content", () => {
   it("does not publish invented customer names or financial ranges in reference templates", () => {
@@ -26,6 +32,9 @@ describe("public planning content", () => {
   });
 
   it("generates a research worksheet without fabricated market or revenue projections", async () => {
+    // Public-copy tests must never make a real paid/free provider call just
+    // because the developer shell has a local provider key configured.
+    vi.stubEnv("OPENROUTER_API_KEY", "");
     const response = await createStrategyDraft(new Request("https://example.test/api/ai-advisor", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

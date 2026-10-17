@@ -100,26 +100,37 @@ async function generateStrategy(
     "Do not change user-selected models or provider hierarchy. Avoid generic disclaimers; state concrete unknowns and next actions.",
   ].join(" ");
 
-  const response = await fetch(`${baseUrl}/chat/completions`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": process.env.APP_URL || "https://zero-gravity-smoky.vercel.app",
-      "X-Title": "Wah-Lah Industries Zero Gravity",
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: "system", content: schemaInstruction },
-        { role: "user", content: JSON.stringify({ niche, location, requestedOutput: fallback }) },
-      ],
-      temperature: 0.25,
-      max_tokens: 1800,
-    }),
-    signal: AbortSignal.timeout(20_000),
-    cache: "no-store",
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": process.env.APP_URL || "https://zero-gravity-smoky.vercel.app",
+        "X-Title": "Wah-Lah Industries Zero Gravity",
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: schemaInstruction },
+          { role: "user", content: JSON.stringify({ niche, location, requestedOutput: fallback }) },
+        ],
+        temperature: 0.25,
+        max_tokens: 1800,
+      }),
+      signal: AbortSignal.timeout(20_000),
+      cache: "no-store",
+    });
+  } catch (error) {
+    // Network failures and timeouts are normal provider failures. Keep the
+    // worksheet available without logging request details or credential data.
+    console.warn(
+      "AI advisor provider request failed; using the verified template:",
+      error instanceof Error ? error.name : "UnknownError",
+    );
+    return { strategy: fallback, mode: "template", model };
+  }
 
   if (!response.ok) {
     // Don't log provider body text, prompts, or credential-bearing request details.
