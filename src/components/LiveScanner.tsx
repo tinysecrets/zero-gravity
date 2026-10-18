@@ -2,7 +2,8 @@
 
 import React, { useState } from "react";
 import { 
-  Search, 
+  Search,
+  Globe,
   Activity, 
   ShieldAlert, 
   ShieldCheck, 
@@ -20,6 +21,7 @@ import {
   RefreshCw
 } from "lucide-react";
 import { AuditResult } from "@/lib/audit-engine";
+import type { WebsiteReliabilityAudit } from "@/lib/website-audit";
 import { Opportunity } from "@/types";
 
 interface LiveScannerProps {
@@ -27,7 +29,7 @@ interface LiveScannerProps {
 }
 
 export function LiveScanner({ onAddDealFromAudit }: LiveScannerProps) {
-  const [activeTool, setActiveTool] = useState<"dns_scanner" | "lead_sim" | "sponsorship_calc">("dns_scanner");
+  const [activeTool, setActiveTool] = useState<"dns_scanner" | "website_audit" | "lead_sim" | "sponsorship_calc">("website_audit");
 
   // Domain Scanner States
   const [domainInput, setDomainInput] = useState("example.com");
@@ -37,6 +39,12 @@ export function LiveScanner({ onAddDealFromAudit }: LiveScannerProps) {
   const [copiedRemediation, setCopiedRemediation] = useState(false);
   const [copiedPitch, setCopiedPitch] = useState(false);
   const [dealAdded, setDealAdded] = useState(false);
+
+  // Live Website Reliability Audit States
+  const [websiteUrl, setWebsiteUrl] = useState("https://zero-gravity-smoky.vercel.app");
+  const [isWebsiteAuditing, setIsWebsiteAuditing] = useState(false);
+  const [websiteAuditResult, setWebsiteAuditResult] = useState<WebsiteReliabilityAudit | null>(null);
+  const [websiteAuditError, setWebsiteAuditError] = useState<string | null>(null);
 
   // Dead Lead Simulator States
   const [deadLeadsCount, setDeadLeadsCount] = useState<number>(0);
@@ -71,6 +79,31 @@ export function LiveScanner({ onAddDealFromAudit }: LiveScannerProps) {
       console.error(err);
     } finally {
       setIsAuditing(false);
+    }
+  };
+
+  const handleRunWebsiteAudit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!websiteUrl.trim() || isWebsiteAuditing) return;
+    setIsWebsiteAuditing(true);
+    setWebsiteAuditError(null);
+    setWebsiteAuditResult(null);
+    try {
+      const res = await fetch("/api/website-audits", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: websiteUrl }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setWebsiteAuditError(typeof data.error === "string" ? data.error : "The website audit could not run.");
+        return;
+      }
+      setWebsiteAuditResult(data.audit as WebsiteReliabilityAudit);
+    } catch (err) {
+      setWebsiteAuditError(err instanceof Error ? err.message : "Network error while requesting the audit.");
+    } finally {
+      setIsWebsiteAuditing(false);
     }
   };
 
@@ -158,6 +191,18 @@ export function LiveScanner({ onAddDealFromAudit }: LiveScannerProps) {
           </button>
 
           <button
+            onClick={() => setActiveTool("website_audit")}
+            className={`px-3 py-1.5 rounded-md cursor-pointer transition flex items-center gap-1.5 ${
+              activeTool === "website_audit"
+                ? "bg-zinc-800 text-cyan-300 font-bold border border-cyan-800/40"
+                : "text-zinc-400 hover:text-white"
+            }`}
+          >
+            <Globe className="w-3.5 h-3.5" />
+            Website Reliability
+          </button>
+
+          <button
             onClick={() => setActiveTool("lead_sim")}
             className={`px-3 py-1.5 rounded-md cursor-pointer transition flex items-center gap-1.5 ${
               activeTool === "lead_sim"
@@ -182,6 +227,158 @@ export function LiveScanner({ onAddDealFromAudit }: LiveScannerProps) {
           </button>
         </div>
       </div>
+
+      {/* Tool: Read-only Website Reliability Audit */}
+      {activeTool === "website_audit" && (
+        <div className="space-y-6">
+          <form onSubmit={handleRunWebsiteAudit} className="p-5 md:p-6 rounded-2xl bg-zinc-900/80 border border-zinc-800 shadow-xl space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-xl bg-cyan-950/70 border border-cyan-800/50">
+                <Globe className="w-5 h-5 text-cyan-300" />
+              </div>
+              <div>
+                <h3 className="text-base md:text-lg font-bold text-white">Website Reliability Audit</h3>
+                <p className="text-xs text-zinc-400 mt-1 max-w-3xl">
+                  Performs a read-only public GET request. Checks DNS, HTTPS/TLS, redirects, HTTP status, page title, and response timing. It does not log in, submit forms, trigger checkout, or change your site.
+                </p>
+              </div>
+            </div>
+            <label className="block space-y-1.5">
+              <span className="text-xs font-mono text-zinc-300">Website URL</span>
+              <input
+                type="url"
+                required
+                maxLength={2048}
+                value={websiteUrl}
+                onChange={(e) => setWebsiteUrl(e.target.value)}
+                placeholder="https://example.com"
+                className="w-full px-4 py-3 rounded-xl bg-zinc-950 border border-zinc-700 text-white placeholder:text-zinc-600 focus:outline-none focus:border-cyan-500 font-mono text-sm"
+              />
+            </label>
+            <div className="flex flex-wrap gap-3 items-center">
+              <button type="submit" disabled={isWebsiteAuditing || !websiteUrl.trim()} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold">
+                {isWebsiteAuditing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                {isWebsiteAuditing ? "Running read-only checks…" : "Run reliability audit"}
+              </button>
+              <span className="text-[10px] text-zinc-500 font-mono">One server-side sample · max 5 redirects · request body capped · public IPs only</span>
+            </div>
+          </form>
+
+          {websiteAuditError && (
+            <div role="alert" className="p-4 rounded-xl border border-red-800/60 bg-red-950/30 text-red-200 text-sm">
+              <div className="font-semibold flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> Audit could not run</div>
+              <p className="mt-1 text-xs">{websiteAuditError}</p>
+            </div>
+          )}
+
+          {websiteAuditResult && (
+            <div className="space-y-5">
+              <div className="p-5 rounded-2xl bg-zinc-950 border border-zinc-800">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-mono text-cyan-300 uppercase tracking-wider">Observed result</div>
+                    <h3 className="text-lg font-bold text-white mt-1 break-all">
+                      {websiteAuditResult.pageTitle || websiteAuditResult.hostname}
+                    </h3>
+                    <p className="text-xs text-zinc-400 mt-1 break-all">{websiteAuditResult.finalUrl}</p>
+                  </div>
+                  <span className={`text-xs px-3 py-1.5 rounded-full border font-mono ${
+                    websiteAuditResult.httpStatus !== null && websiteAuditResult.httpStatus >= 200 && websiteAuditResult.httpStatus < 400 && websiteAuditResult.tls.status !== "failed"
+                      ? "bg-emerald-950/50 border-emerald-800 text-emerald-300"
+                      : "bg-amber-950/50 border-amber-800 text-amber-300"
+                  }`}>
+                    {websiteAuditResult.result === "complete" ? `HTTP ${websiteAuditResult.httpStatus}` : "INCONCLUSIVE"}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-5">
+                  <div className="p-3 rounded-xl bg-zinc-900 border border-zinc-800">
+                    <span className="block text-[10px] uppercase text-zinc-500 font-mono">DNS lookup</span>
+                    <span className="block text-lg font-bold text-white mt-1">{websiteAuditResult.dnsLookupMs === null ? "—" : `${websiteAuditResult.dnsLookupMs} ms`}</span>
+                    <span className="text-[10px] text-zinc-500">{websiteAuditResult.dnsLookups.length ? "Public DNS resolved" : "No address resolved"}</span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-zinc-900 border border-zinc-800">
+                    <span className="block text-[10px] uppercase text-zinc-500 font-mono">Time to first byte</span>
+                    <span className="block text-lg font-bold text-white mt-1">{websiteAuditResult.timeToFirstByteMs === null ? "—" : `${websiteAuditResult.timeToFirstByteMs} ms`}</span>
+                    <span className="text-[10px] text-zinc-500">Server response headers</span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-zinc-900 border border-zinc-800">
+                    <span className="block text-[10px] uppercase text-zinc-500 font-mono">TLS</span>
+                    <span className={`block text-lg font-bold mt-1 ${
+                      websiteAuditResult.tls.status === "valid" ? "text-emerald-300" :
+                      websiteAuditResult.tls.status === "failed" ? "text-red-300" : "text-zinc-300"
+                    }`}>{websiteAuditResult.tls.status === "valid" ? "Validated" : websiteAuditResult.tls.status === "not-applicable" ? "HTTP only" : websiteAuditResult.tls.status === "failed" ? "Failed" : "Unknown"}</span>
+                    <span className="text-[10px] text-zinc-500">{websiteAuditResult.tls.validTo ? `Expires ${websiteAuditResult.tls.validTo}` : websiteAuditResult.tls.protocol || "Certificate details unavailable"}</span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-zinc-900 border border-zinc-800">
+                    <span className="block text-[10px] uppercase text-zinc-500 font-mono">Full check</span>
+                    <span className="block text-lg font-bold text-white mt-1">{websiteAuditResult.totalElapsedMs} ms</span>
+                    <span className="text-[10px] text-zinc-500">{websiteAuditResult.redirects.length} redirect(s) · {websiteAuditResult.responseBytesRead.toLocaleString()} bytes inspected</span>
+                  </div>
+                </div>
+                <div className="mt-4 p-3 rounded-xl border border-zinc-800 bg-zinc-900/60 text-xs text-zinc-300">
+                  <span className="font-semibold text-white">Financial impact: Not estimated.</span> {websiteAuditResult.revenueImpact.reason}
+                </div>
+                <p className="mt-3 text-[10px] text-zinc-500">
+                  Checked {new Date(websiteAuditResult.checkedAt).toLocaleString()} · {websiteAuditResult.executionRegion}. This single server-side sample is not an uptime guarantee, global DNS result, Core Web Vitals score, or checkout test.
+                </p>
+              </div>
+
+              {websiteAuditResult.dnsLookups.length > 0 && (
+                <div className="p-4 rounded-xl bg-zinc-950 border border-zinc-800">
+                  <h4 className="text-xs font-mono uppercase tracking-wider text-zinc-300 mb-2">Resolved addresses</h4>
+                  {websiteAuditResult.dnsLookups.map((lookup, i) => (
+                    <div key={lookup.hostname + i} className="text-xs font-mono text-zinc-400 py-1 break-all">
+                      <span className="text-white">{lookup.hostname}</span> → {lookup.addresses.join(", ")} ({lookup.elapsedMs} ms)
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {websiteAuditResult.redirects.length > 0 && (
+                <div className="p-4 rounded-xl bg-zinc-950 border border-zinc-800">
+                  <h4 className="text-xs font-mono uppercase tracking-wider text-zinc-300 mb-2">Redirect chain</h4>
+                  {websiteAuditResult.redirects.map((hop, i) => (
+                    <div key={hop.from + i} className="grid grid-cols-[auto_1fr] gap-2 py-1 text-xs">
+                      <span className="font-mono text-amber-300">{hop.statusCode}</span>
+                      <span className="text-zinc-300 break-all">{hop.from} <ArrowRight className="inline w-3 h-3 mx-1" /> {hop.to}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="space-y-3">
+                <div>
+                  <h4 className="text-sm font-bold text-white">Findings ranked by severity</h4>
+                  <p className="text-[11px] text-zinc-500 mt-1">Evidence below comes from this request. Business impact is qualitative unless analytics and checkout metrics are supplied.</p>
+                </div>
+                {websiteAuditResult.findings.map((finding, i) => (
+                  <div key={finding.title + i} className={`p-4 rounded-xl border ${
+                    finding.severity === "critical" ? "bg-red-950/20 border-red-800/60" :
+                    finding.severity === "warning" ? "bg-amber-950/20 border-amber-800/60" :
+                    finding.severity === "pass" ? "bg-emerald-950/20 border-emerald-800/50" : "bg-zinc-950 border-zinc-800"
+                  }`}>
+                    <div className="flex items-start gap-2">
+                      {finding.severity === "critical" ? <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" /> :
+                       finding.severity === "warning" ? <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" /> :
+                       finding.severity === "pass" ? <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" /> :
+                       <Activity className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h5 className="text-sm font-semibold text-white">{finding.title}</h5>
+                          <span className="text-[9px] font-mono uppercase text-zinc-400 border border-zinc-700 rounded px-1.5 py-0.5">{finding.severity}</span>
+                        </div>
+                        <p className="text-xs text-zinc-300 mt-2 break-words">{finding.evidence}</p>
+                        <p className="text-xs text-cyan-200 mt-2"><span className="font-semibold">Recommended fix:</span> {finding.recommendedFix}</p>
+                        <p className="text-[11px] text-zinc-400 mt-2"><span className="font-semibold text-zinc-300">Business impact:</span> {finding.businessImpact}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Tool 1: Live DNS Scanner */}
       {activeTool === "dns_scanner" && (

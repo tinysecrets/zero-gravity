@@ -37,7 +37,11 @@ describe("public planning content", () => {
     vi.stubEnv("OPENROUTER_API_KEY", "");
     const response = await createStrategyDraft(new Request("https://example.test/api/ai-advisor", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Origin: "https://example.test",
+        "x-real-ip": "198.51.100.250",
+      },
       body: JSON.stringify({ niche: "Roofing", location: "Montgomery, Alabama" }),
     }));
     const result = await response.json();

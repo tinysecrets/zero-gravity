@@ -224,6 +224,11 @@ describe("🔴 P0 Production Stack — Full Smoke Test & Verification", () => {
   it("Phase 3: AI strategy advisor generates compliant research worksheet", async () => {
     const req = new Request("https://zero-gravity-wah-lah.vercel.app/api/ai-advisor", {
       method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: "https://zero-gravity-wah-lah.vercel.app",
+        "x-real-ip": "198.51.100.251",
+      },
       body: JSON.stringify({ niche: "Commercial Roofing", location: "Austin, TX" }),
     });
     const res = await createStrategy(req);
