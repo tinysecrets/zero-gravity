@@ -2,11 +2,45 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { proxy } from "@/proxy";
 import { appOrigin, automationReadiness, defaultCycleConfig, nextVercelRun, parseCycleConfig, parseIntervalMinutes } from "@/lib/automation-config";
-import { validCronAuthorization } from "@/lib/request-auth";
+import { validCronAuthorization, validOperatorOrRunnerAuthorization, validRunnerAuthorization } from "@/lib/request-auth";
 
 const relevantEnv = ["VERCEL", "VERCEL_ENV", "DATABASE_URL", "CRON_SECRET", "ZERO_GRAVITY_RUNNER_TOKEN", "DASHBOARD_PASSWORD", "DASHBOARD_USERNAME", "OPERATOR_USERNAME", "OPERATOR_PASSWORD", "CTLOGS_API_KEY", "ALLOW_PREVIEW_OPERATIONS", "APP_URL", "NEXT_PUBLIC_APP_URL", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "RESEND_API_KEY", "FROM_EMAIL", "OUTREACH_REPLY_TO", "OUTREACH_POSTAL_ADDRESS", "OUTREACH_TEST_RECIPIENT", "OUTREACH_COMPLIANCE_CONFIRMED", "AUTONOMOUS_SEND_OUTREACH", "AUTONOMOUS_CREATE_CHECKOUT", "VERCEL_PROJECT_PRODUCTION_URL", "VERCEL_URL"];
 function clearEnv() { for (const key of relevantEnv) vi.stubEnv(key, ""); }
 afterEach(() => vi.unstubAllEnvs());
+
+describe("operator and runner control authorization", () => {
+  it("compares the runner token securely and fails closed when absent or incorrect", () => {
+    clearEnv();
+    vi.stubEnv("ZERO_GRAVITY_RUNNER_TOKEN", "runner-fixture");
+    expect(validRunnerAuthorization(new Request("https://example.test", {
+      headers: { "x-zero-gravity-runner": "runner-fixture" },
+    }))).toBe(true);
+    expect(validRunnerAuthorization(new Request("https://example.test", {
+      headers: { "x-zero-gravity-runner": "wrong" },
+    }))).toBe(false);
+    vi.stubEnv("ZERO_GRAVITY_RUNNER_TOKEN", "");
+    expect(validRunnerAuthorization(new Request("https://example.test", {
+      headers: { "x-zero-gravity-runner": "runner-fixture" },
+    }))).toBe(false);
+  });
+
+  it("accepts either a configured operator credential or the separate runner token", () => {
+    clearEnv();
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("OPERATOR_USERNAME", "operator");
+    vi.stubEnv("OPERATOR_PASSWORD", "fixture-password-that-is-long-enough-32chars");
+    const authorization = "Basic " + Buffer.from("operator:fixture-password-that-is-long-enough-32chars").toString("base64");
+    expect(validOperatorOrRunnerAuthorization(new Request("https://example.test", {
+      headers: { authorization },
+    }))).toBe(true);
+    vi.stubEnv("OPERATOR_PASSWORD", "");
+    vi.stubEnv("ZERO_GRAVITY_RUNNER_TOKEN", "runner-fixture");
+    expect(validOperatorOrRunnerAuthorization(new Request("https://example.test", {
+      headers: { "x-zero-gravity-runner": "runner-fixture" },
+    }))).toBe(true);
+    expect(validOperatorOrRunnerAuthorization(new Request("https://example.test"))).toBe(false);
+  });
+});
 
 describe("configuration boundaries", () => {
   it("does not turn credentials alone into payment/email automation", () => {
@@ -149,11 +183,14 @@ describe("request authentication", () => {
     expect(proxy(new NextRequest("https://example.test/dashboard/leads"))?.status).toBe(401);
     expect(proxy(new NextRequest("https://example.test/api/private/leads"))?.status).toBe(401);
   });
-  it("permits only runner-key-authenticated cycle/schedule mutations through the proxy", () => {
+  it("permits only runner-key-authenticated schedule status and cycle/schedule mutations", () => {
     clearEnv();
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("ZERO_GRAVITY_RUNNER_TOKEN", "fixture");
 
+    expect(proxy(new NextRequest("https://example.test/api/autonomous/schedule", {
+      headers: { "x-zero-gravity-runner": "fixture" },
+    }))?.status).toBe(200);
     expect(proxy(new NextRequest("https://example.test/api/autonomous/cycle", {
       method: "POST", headers: { "x-zero-gravity-runner": "fixture" }, body: "{}",
     }))?.status).toBe(200);
@@ -161,6 +198,10 @@ describe("request authentication", () => {
       method: "DELETE", headers: { "x-zero-gravity-runner": "fixture" },
     }))?.status).toBe(200);
 
+    expect(proxy(new NextRequest("https://example.test/api/autonomous/schedule"))?.status).toBe(503);
+    expect(proxy(new NextRequest("https://example.test/api/autonomous/schedule", {
+      headers: { "x-zero-gravity-runner": "wrong" },
+    }))?.status).toBe(503);
     expect(proxy(new NextRequest("https://example.test/api/autonomous/cycle", {
       method: "POST", headers: { "x-zero-gravity-runner": "wrong" }, body: "{}",
     }))?.status).toBe(503);

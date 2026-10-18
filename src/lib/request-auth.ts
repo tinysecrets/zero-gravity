@@ -60,6 +60,20 @@ export function validOperatorAuthorization(request: Request): boolean {
   return usernameMatches && passwordMatches;
 }
 
+/**
+ * A private server-to-server token for automation clients. Compare in constant
+ * time and never expose this secret to browser code.
+ */
+export function validRunnerAuthorization(request: Request): boolean {
+  const secret = process.env.ZERO_GRAVITY_RUNNER_TOKEN;
+  return Boolean(secret && secretsEqual(request.headers.get("x-zero-gravity-runner"), secret));
+}
+
+/** Interactive operators use Basic Auth; trusted runners use their own token. */
+export function validOperatorOrRunnerAuthorization(request: Request): boolean {
+  return validRunnerAuthorization(request) || validOperatorAuthorization(request);
+}
+
 // Next may construct request.url from its internal listener address. Use the
 // proxy-forwarded public host/protocol for browser CSRF checks on Vercel/previews.
 export function sameOriginRequest(request: Request): boolean {

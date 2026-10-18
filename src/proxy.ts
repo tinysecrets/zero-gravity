@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { operatorAuthState, sameOriginRequest, validOperatorAuthorization } from "@/lib/request-auth";
+import { operatorAuthState, sameOriginRequest, validOperatorAuthorization, validRunnerAuthorization } from "@/lib/request-auth";
 
 // These endpoints are authenticated at their provider boundary instead of by
 // operator HTTP Basic Auth: Vercel cron's Bearer token, Stripe's webhook
@@ -17,20 +17,19 @@ function isProviderRoute(request: NextRequest): boolean {
       request.nextUrl.searchParams.has("session_id"));
 }
 
-// Only allow runner-authenticated mutations to bypass operator Basic Auth.
-// The route handlers repeat this token check before doing any work. Read-only
-// GET status routes remain behind operator auth, and Preview's safety gate
-// above still runs first.
-function isRunnerAuthenticatedMutation(request: NextRequest): boolean {
+// Permit the runner token on read-only schedule status and on cycle/schedule
+// mutations. The route handlers repeat the token check before mutations. The
+// Preview operations gate above still runs before this exception.
+function isRunnerAuthenticatedRoute(request: NextRequest): boolean {
   const path = request.nextUrl.pathname;
   const method = request.method;
-  const runnerRoute =
+  const runnerStatus = path === "/api/autonomous/schedule" && method === "GET";
+  const runnerMutation =
     (path === "/api/autonomous/cycle" || path === "/api/autonomous/schedule") &&
     (method === "POST" || method === "DELETE");
-  if (!runnerRoute) return false;
+  if (!runnerStatus && !runnerMutation) return false;
 
-  const token = process.env.ZERO_GRAVITY_RUNNER_TOKEN;
-  return Boolean(token && request.headers.get("x-zero-gravity-runner") === token);
+  return validRunnerAuthorization(request);
 }
 
 function previewOperationsDisabled() {
@@ -76,7 +75,7 @@ export function proxy(request: NextRequest) {
   // Public service page is separate from the authenticated operator workspace.
   if (request.nextUrl.pathname === "/") return NextResponse.next();
 
-  if (isProviderRoute(request) || isRunnerAuthenticatedMutation(request)) {
+  if (isProviderRoute(request) || isRunnerAuthenticatedRoute(request)) {
     return NextResponse.next();
   }
 

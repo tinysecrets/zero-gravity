@@ -1,14 +1,10 @@
 import { NextResponse } from "next/server";
 import { startScheduler, stopScheduler, getStatus } from "@/lib/scheduler";
 import { parseCycleConfig, parseIntervalMinutes } from "@/lib/automation-config";
+import { validOperatorOrRunnerAuthorization } from "@/lib/request-auth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-
-function runnerAuthorized(request: Request): boolean {
-  const token = process.env.ZERO_GRAVITY_RUNNER_TOKEN;
-  return Boolean(token && request.headers.get("x-zero-gravity-runner") === token);
-}
 
 export async function GET() {
   try {
@@ -21,7 +17,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  if (!runnerAuthorized(request)) return NextResponse.json({ success: false, error: "Runner authorization required." }, { status: 401 });
+  if (!validOperatorOrRunnerAuthorization(request)) return NextResponse.json({ success: false, error: "Runner authorization required." }, { status: 401 });
   let body: Record<string, unknown>;
   let cycleConfig;
   let intervalMinutes;
@@ -51,7 +47,7 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  if (!runnerAuthorized(request)) return NextResponse.json({ success: false, error: "Runner authorization required." }, { status: 401 });
+  if (!validOperatorOrRunnerAuthorization(request)) return NextResponse.json({ success: false, error: "Runner authorization required." }, { status: 401 });
   try {
     return NextResponse.json({ success: true, message: "Scheduler paused; active cycle stop requested.", scheduler: await stopScheduler() });
   } catch (error) {

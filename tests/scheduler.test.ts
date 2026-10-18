@@ -12,6 +12,7 @@ import { ensureDbInitialized } from "@/lib/db-seed";
 import { getStatus, runOnce, startScheduler, stopScheduler } from "@/lib/scheduler";
 import { GET as cron } from "@/app/api/autonomous/cron/route";
 import { GET as readSchedule, POST as configureSchedule } from "@/app/api/autonomous/schedule/route";
+import { POST as runCycle } from "@/app/api/autonomous/cycle/route";
 
 function completed(config: CycleConfig): CycleState {
   return { id: "fixture-run", status: "completed", startedAt: new Date().toISOString(), completedAt: new Date().toISOString(), config, steps: [], summary: {
@@ -118,6 +119,28 @@ describe("persistent Vercel scheduler", () => {
     vi.stubEnv("ZERO_GRAVITY_RUNNER_TOKEN", "runner-fixture");
     const response = await configureSchedule(new Request("https://zero-gravity.test/api/autonomous/schedule", { method: "POST", headers: { "x-zero-gravity-runner": "runner-fixture" }, body: JSON.stringify({ autoSendOutreach: "true", intervalMinutes: "bad" }) }));
     expect(response.status).toBe(400);
+    expect(executeCycle).not.toHaveBeenCalled();
+  });
+
+  it("allows operator Basic Auth to use the dashboard cycle and scheduler controls", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("OPERATOR_USERNAME", "operator");
+    vi.stubEnv("OPERATOR_PASSWORD", "fixture-password-that-is-long-enough-32chars");
+    const authorization = "Basic " + Buffer.from("operator:fixture-password-that-is-long-enough-32chars").toString("base64");
+
+    const cycle = await runCycle(new Request("https://zero-gravity.test/api/autonomous/cycle", {
+      method: "POST",
+      headers: { authorization, "content-type": "application/json" },
+      body: JSON.stringify({ scoreThreshold: "invalid" }),
+    }));
+    expect(cycle.status).toBe(400);
+
+    const schedule = await configureSchedule(new Request("https://zero-gravity.test/api/autonomous/schedule", {
+      method: "POST",
+      headers: { authorization, "content-type": "application/json" },
+      body: JSON.stringify({ intervalMinutes: "bad" }),
+    }));
+    expect(schedule.status).toBe(400);
     expect(executeCycle).not.toHaveBeenCalled();
   });
 });
