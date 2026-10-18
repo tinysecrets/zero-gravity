@@ -164,6 +164,21 @@ describe("AI advisor model integration", () => {
     expect(JSON.stringify(body)).not.toContain("provider-test-key");
   });
 
+  it("falls back to the template when a provider returns invalid JSON", async () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "provider-test-key");
+    const mockFetch = vi.fn().mockResolvedValue(new Response("not-json", { status: 200 }));
+    vi.stubGlobal("fetch", mockFetch);
+
+    const response = await POST(request({ niche: "plumbers", location: "Montgomery" }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.generation.mode).toBe("template");
+    expect(body.strategy.title).toContain("plumbers");
+    expect(JSON.stringify(body)).not.toContain("provider-test-key");
+  });
+
   it("falls back to the template for provider network failures without leaking provider keys", async () => {
     vi.stubEnv("OPENROUTER_API_KEY", "provider-test-key");
     const mockFetch = vi.fn().mockRejectedValue(new TypeError("simulated network failure"));

@@ -180,9 +180,15 @@ async function generateStrategy(
     return { strategy: fallback, mode: "template", model };
   }
 
-  const payload = await response.json() as {
+  let payload: {
     choices?: Array<{ message?: { content?: string | Array<{ type?: string; text?: string }> } }>;
   };
+  try {
+    payload = await response.json() as typeof payload;
+  } catch {
+    console.warn("AI advisor provider returned invalid JSON; using the verified template.");
+    return { strategy: fallback, mode: "template", model };
+  }
   const content = payload.choices?.[0]?.message?.content;
   const text = typeof content === "string"
     ? content
