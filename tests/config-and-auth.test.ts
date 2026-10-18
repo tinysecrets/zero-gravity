@@ -222,7 +222,7 @@ describe("request authentication", () => {
   it("keeps signed-provider routes directly reachable without operator credentials", () => {
     clearEnv();
     vi.stubEnv("NODE_ENV", "production");
-    for (const path of ["/api/health", "/api/payments/webhook", "/api/autonomous/cron", "/payment/success", "/api/payments?session_id=cs_test_random"]) {
+    for (const path of ["/api/website-audits", "/api/ai-advisor", "/api/public/contact", "/api/public/checkout", "/api/health", "/api/payments/webhook", "/api/autonomous/cron", "/payment/success", "/api/payments?session_id=cs_test_random"]) {
       expect(proxy(new NextRequest(`https://example.test${path}`))?.status).toBe(200);
     }
   });

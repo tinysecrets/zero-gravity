@@ -6,7 +6,11 @@ import { operatorAuthState, sameOriginRequest, validOperatorAuthorization, valid
 // signature, or an unguessable Checkout Session ID.
 function isProviderRoute(request: NextRequest): boolean {
   const path = request.nextUrl.pathname;
+  // Public-facing handlers below enforce same-origin, request-size, and rate limits
+  // themselves; they must not be blocked by operator Basic Auth. Preview remains
+  // fail-closed above unless ALLOW_PREVIEW_OPERATIONS is explicitly enabled.
   return path === "/api/public/contact" || path === "/api/public/checkout" ||
+    path === "/api/website-audits" || path === "/api/ai-advisor" ||
     path === "/api/health" || path === "/api/health/email" ||
     path === "/api/autonomous/cron" ||
     path === "/api/payments/webhook" ||
