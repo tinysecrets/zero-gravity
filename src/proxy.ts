@@ -17,6 +17,22 @@ function isProviderRoute(request: NextRequest): boolean {
       request.nextUrl.searchParams.has("session_id"));
 }
 
+// Only allow runner-authenticated mutations to bypass operator Basic Auth.
+// The route handlers repeat this token check before doing any work. Read-only
+// GET status routes remain behind operator auth, and Preview's safety gate
+// above still runs first.
+function isRunnerAuthenticatedMutation(request: NextRequest): boolean {
+  const path = request.nextUrl.pathname;
+  const method = request.method;
+  const runnerRoute =
+    (path === "/api/autonomous/cycle" || path === "/api/autonomous/schedule") &&
+    (method === "POST" || method === "DELETE");
+  if (!runnerRoute) return false;
+
+  const token = process.env.ZERO_GRAVITY_RUNNER_TOKEN;
+  return Boolean(token && request.headers.get("x-zero-gravity-runner") === token);
+}
+
 function previewOperationsDisabled() {
   return NextResponse.json(
     { success: false, error: "Preview operations are disabled. Set ALLOW_PREVIEW_OPERATIONS=true only after configuring an isolated Preview database." },
@@ -60,7 +76,9 @@ export function proxy(request: NextRequest) {
   // Public service page is separate from the authenticated operator workspace.
   if (request.nextUrl.pathname === "/") return NextResponse.next();
 
-  if (isProviderRoute(request)) return NextResponse.next();
+  if (isProviderRoute(request) || isRunnerAuthenticatedMutation(request)) {
+    return NextResponse.next();
+  }
 
   // Production management routes fail closed unless valid operator credentials
   // are configured. Local development remains open only when neither credential

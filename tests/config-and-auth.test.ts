@@ -4,7 +4,7 @@ import { proxy } from "@/proxy";
 import { appOrigin, automationReadiness, defaultCycleConfig, nextVercelRun, parseCycleConfig, parseIntervalMinutes } from "@/lib/automation-config";
 import { validCronAuthorization } from "@/lib/request-auth";
 
-const relevantEnv = ["VERCEL", "VERCEL_ENV", "DATABASE_URL", "CRON_SECRET", "DASHBOARD_PASSWORD", "DASHBOARD_USERNAME", "OPERATOR_USERNAME", "OPERATOR_PASSWORD", "CTLOGS_API_KEY", "ALLOW_PREVIEW_OPERATIONS", "APP_URL", "NEXT_PUBLIC_APP_URL", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "RESEND_API_KEY", "FROM_EMAIL", "OUTREACH_REPLY_TO", "OUTREACH_POSTAL_ADDRESS", "OUTREACH_TEST_RECIPIENT", "OUTREACH_COMPLIANCE_CONFIRMED", "AUTONOMOUS_SEND_OUTREACH", "AUTONOMOUS_CREATE_CHECKOUT", "VERCEL_PROJECT_PRODUCTION_URL", "VERCEL_URL"];
+const relevantEnv = ["VERCEL", "VERCEL_ENV", "DATABASE_URL", "CRON_SECRET", "ZERO_GRAVITY_RUNNER_TOKEN", "DASHBOARD_PASSWORD", "DASHBOARD_USERNAME", "OPERATOR_USERNAME", "OPERATOR_PASSWORD", "CTLOGS_API_KEY", "ALLOW_PREVIEW_OPERATIONS", "APP_URL", "NEXT_PUBLIC_APP_URL", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "RESEND_API_KEY", "FROM_EMAIL", "OUTREACH_REPLY_TO", "OUTREACH_POSTAL_ADDRESS", "OUTREACH_TEST_RECIPIENT", "OUTREACH_COMPLIANCE_CONFIRMED", "AUTONOMOUS_SEND_OUTREACH", "AUTONOMOUS_CREATE_CHECKOUT", "VERCEL_PROJECT_PRODUCTION_URL", "VERCEL_URL"];
 function clearEnv() { for (const key of relevantEnv) vi.stubEnv(key, ""); }
 afterEach(() => vi.unstubAllEnvs());
 
@@ -148,6 +148,35 @@ describe("request authentication", () => {
     expect(proxy(new NextRequest("https://example.test/dashboard"))?.status).toBe(401);
     expect(proxy(new NextRequest("https://example.test/dashboard/leads"))?.status).toBe(401);
     expect(proxy(new NextRequest("https://example.test/api/private/leads"))?.status).toBe(401);
+  });
+  it("permits only runner-key-authenticated cycle/schedule mutations through the proxy", () => {
+    clearEnv();
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("ZERO_GRAVITY_RUNNER_TOKEN", "fixture");
+
+    expect(proxy(new NextRequest("https://example.test/api/autonomous/cycle", {
+      method: "POST", headers: { "x-zero-gravity-runner": "fixture" }, body: "{}",
+    }))?.status).toBe(200);
+    expect(proxy(new NextRequest("https://example.test/api/autonomous/schedule", {
+      method: "DELETE", headers: { "x-zero-gravity-runner": "fixture" },
+    }))?.status).toBe(200);
+
+    expect(proxy(new NextRequest("https://example.test/api/autonomous/cycle", {
+      method: "POST", headers: { "x-zero-gravity-runner": "wrong" }, body: "{}",
+    }))?.status).toBe(503);
+    expect(proxy(new NextRequest("https://example.test/api/autonomous/cycle"))?.status).toBe(503);
+    expect(proxy(new NextRequest("https://example.test/api/payments", {
+      method: "POST", headers: { "x-zero-gravity-runner": "fixture" },
+    }))?.status).toBe(503);
+  });
+  it("keeps the Preview operations kill switch ahead of runner authentication", () => {
+    clearEnv();
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("VERCEL_ENV", "preview");
+    vi.stubEnv("ZERO_GRAVITY_RUNNER_TOKEN", "fixture");
+    expect(proxy(new NextRequest("https://example.test/api/autonomous/cycle", {
+      method: "POST", headers: { "x-zero-gravity-runner": "fixture" }, body: "{}",
+    }))?.status).toBe(403);
   });
   it("keeps signed-provider routes directly reachable without operator credentials", () => {
     clearEnv();
