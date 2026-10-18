@@ -45,6 +45,72 @@ describe("persistent Vercel scheduler", () => {
     expect((await runOnce()).status).toBe("skipped");
     expect(executeCycle).not.toHaveBeenCalled();
   });
+
+  it("saves disabled outreach and checkout flags without re-enabling a paused scheduler", async () => {
+    vi.stubEnv("ZERO_GRAVITY_RUNNER_TOKEN", "runner-fixture");
+    await stopScheduler();
+    await db.update(schedulerSettings).set({ autoSendOutreach: true, autoCreateCheckout: true });
+
+    const response = await configureSchedule(new Request("https://zero-gravity.test/api/autonomous/schedule", {
+      method: "POST",
+      headers: { "x-zero-gravity-runner": "runner-fixture", "content-type": "application/json" },
+      body: JSON.stringify({ autoSendOutreach: false, autoCreateCheckout: false }),
+    }));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      success: true,
+      message: "Settings saved; scheduler remains paused.",
+      scheduler: { enabled: false, nextRunAt: null, cycleConfig: { autoSendOutreach: false, autoCreateCheckout: false } },
+    });
+    const [saved] = await db.select().from(schedulerSettings);
+    expect(saved).toMatchObject({ enabled: false, autoSendOutreach: false, autoCreateCheckout: false, nextRunAt: null });
+    expect((await getStatus()).enabled).toBe(false);
+    expect(executeCycle).not.toHaveBeenCalled();
+  });
+
+  it("atomically pauses while saving outreach and checkout opt-outs", async () => {
+    vi.stubEnv("ZERO_GRAVITY_RUNNER_TOKEN", "runner-fixture");
+    await startScheduler({ enabled: true });
+    await db.update(schedulerSettings).set({ autoSendOutreach: true, autoCreateCheckout: true });
+
+    const response = await configureSchedule(new Request("https://zero-gravity.test/api/autonomous/schedule", {
+      method: "POST",
+      headers: { "x-zero-gravity-runner": "runner-fixture", "content-type": "application/json" },
+      body: JSON.stringify({ enabled: false, autoSendOutreach: false, autoCreateCheckout: false }),
+    }));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      success: true,
+      message: "Scheduler paused.",
+      scheduler: { enabled: false, nextRunAt: null, cycleConfig: { autoSendOutreach: false, autoCreateCheckout: false } },
+    });
+    const [saved] = await db.select().from(schedulerSettings);
+    expect(saved).toMatchObject({ enabled: false, autoSendOutreach: false, autoCreateCheckout: false, nextRunAt: null, stopRequested: true });
+    expect(executeCycle).not.toHaveBeenCalled();
+  });
+
+  it("saves configuration without changing an enabled scheduler unless enabled:true is explicit", async () => {
+    vi.stubEnv("ZERO_GRAVITY_RUNNER_TOKEN", "runner-fixture");
+    await startScheduler({ enabled: true });
+    await db.update(schedulerSettings).set({ autoSendOutreach: true, autoCreateCheckout: true });
+
+    const response = await configureSchedule(new Request("https://zero-gravity.test/api/autonomous/schedule", {
+      method: "POST",
+      headers: { "x-zero-gravity-runner": "runner-fixture", "content-type": "application/json" },
+      body: JSON.stringify({ autoSendOutreach: false, autoCreateCheckout: false }),
+    }));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      success: true,
+      message: "Settings saved; scheduler remains enabled.",
+      scheduler: { enabled: true, cycleConfig: { autoSendOutreach: false, autoCreateCheckout: false } },
+    });
+    expect((await db.select().from(schedulerSettings))[0]).toMatchObject({ enabled: true, autoSendOutreach: false, autoCreateCheckout: false });
+    expect(executeCycle).not.toHaveBeenCalled();
+  });
   it("bootstrap capability flags never reauthorize saved checkout/email opt-outs on a cold start", async () => {
     await ensureDbInitialized();
     await db.update(schedulerSettings).set({ autoCreateCheckout: false, autoSendOutreach: false });

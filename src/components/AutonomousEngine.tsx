@@ -257,26 +257,43 @@ export function AutonomousEngine() {
     try { await fetch("/api/autonomous/cycle", { method: "DELETE" }); } catch { /* */ }
   };
 
+  const schedulerConfigPayload = () => ({
+    intervalMinutes: schedInterval,
+    scoreThreshold,
+    autoCreateDeals,
+    autoGenerateOutreach,
+    autoSendOutreach,
+    maxDomainsPerCycle,
+    autoCreateCheckout,
+  });
+
+  const handleSaveSchedulerConfiguration = async () => {
+    try {
+      const res = await fetch("/api/autonomous/schedule", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // No enabled field: save the controls while preserving the current
+        // scheduler state. This is safe to use while the schedule is paused.
+        body: JSON.stringify(schedulerConfigPayload()),
+      });
+      const data = await res.json();
+      if (data.success) { setScheduler(data.scheduler); setReadiness(data.scheduler.readiness); setNotice(data.message); }
+      else setNotice(data.error || "Unable to save scheduler configuration.");
+    } catch { setNotice("Unable to save scheduler configuration."); }
+  };
+
   const handleStartScheduler = async () => {
     try {
       const res = await fetch("/api/autonomous/schedule", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          enabled: true,
-          intervalMinutes: schedInterval,
-          scoreThreshold,
-          autoCreateDeals,
-          autoGenerateOutreach,
-          autoSendOutreach,
-          maxDomainsPerCycle,
-          autoCreateCheckout,
-        }),
+        // This is the separate, explicit action that enables scheduled runs.
+        body: JSON.stringify({ enabled: true, ...schedulerConfigPayload() }),
       });
       const data = await res.json();
       if (data.success) { setScheduler(data.scheduler); setReadiness(data.scheduler.readiness); setNotice(data.message); }
-      else setNotice(data.error);
-    } catch { setNotice("Unable to save scheduler configuration."); }
+      else setNotice(data.error || "Unable to start scheduler.");
+    } catch { setNotice("Unable to start scheduler."); }
   };
 
   const handleStopScheduler = async () => {
@@ -575,7 +592,7 @@ export function AutonomousEngine() {
               <option value={60}>60 min</option>
               <option value={1440}>Daily</option>
             </select>}
-            {scheduler?.enabled && <button onClick={handleStartScheduler} className="rounded-lg border border-purple-700 bg-purple-950 px-3 py-2 text-xs font-mono text-purple-200 cursor-pointer">Save configuration</button>}
+            <button onClick={handleSaveSchedulerConfiguration} className="rounded-lg border border-purple-700 bg-purple-950 px-3 py-2 text-xs font-mono text-purple-200 cursor-pointer">{scheduler?.enabled ? "Save configuration" : "Save settings (stay paused)"}</button>
             {scheduler?.enabled ? (
               <button onClick={handleStopScheduler} className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white font-mono text-xs font-bold transition cursor-pointer">
                 <Square className="w-3.5 h-3.5" /> Pause

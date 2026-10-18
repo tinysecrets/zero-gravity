@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { startScheduler, stopScheduler, getStatus } from "@/lib/scheduler";
+import { startScheduler, stopScheduler, saveSchedulerConfiguration, getStatus } from "@/lib/scheduler";
 import { parseCycleConfig, parseIntervalMinutes } from "@/lib/automation-config";
 import { validOperatorOrRunnerAuthorization } from "@/lib/request-auth";
 
@@ -30,14 +30,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: false, error: error instanceof Error ? error.message : "Invalid configuration." }, { status: 400 });
   }
   try {
-    const status = body.enabled === false ? await stopScheduler() : await startScheduler({
-      enabled: true, intervalMinutes, cycleConfig: { ...(await getStatus()).cycleConfig, ...cycleConfig },
-    });
+    const patch = { intervalMinutes, cycleConfig };
+    // Only an explicit enabled:true may start the scheduler. Config-only updates
+    // preserve the current persisted state, and enabled:false saves safety flags
+    // in the same database update that pauses the scheduler.
+    const status = body.enabled === false
+      ? await stopScheduler(patch)
+      : body.enabled === true
+        ? await startScheduler({ enabled: true, intervalMinutes, cycleConfig: { ...(await getStatus()).cycleConfig, ...cycleConfig } })
+        : await saveSchedulerConfiguration(patch);
     return NextResponse.json({
       success: true,
-      message: !status.enabled ? "Scheduler paused." : status.mode === "vercel_cron"
-        ? "Enabled. Vercel Cron runs daily at 13:00 UTC; use Run Single Cycle to run now."
-        : `Enabled. Running every ${status.intervalMinutes} minutes.`,
+      message: body.enabled === undefined
+        ? `Settings saved; scheduler remains ${status.enabled ? "enabled" : "paused"}.`
+        : !status.enabled ? "Scheduler paused."
+          : status.mode === "vercel_cron"
+            ? "Enabled. Vercel Cron runs daily at 13:00 UTC; use Run Single Cycle to run now."
+            : `Enabled. Running every ${status.intervalMinutes} minutes.`,
       scheduler: status,
     });
   } catch (error) {

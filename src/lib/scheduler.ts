@@ -106,13 +106,39 @@ export async function startScheduler(partial: Partial<SchedulerConfig> = {}): Pr
   return getStatus();
 }
 
-export async function stopScheduler(): Promise<SchedulerStatus> {
+export interface SchedulerSettingsPatch {
+  cycleConfig?: Partial<CycleConfig>;
+  intervalMinutes?: number;
+}
+
+function schedulerSettingsPatch(partial: SchedulerSettingsPatch = {}) {
+  const updates = parseCycleConfig(partial.cycleConfig || {});
+  const intervalMinutes = isVercel() ? 1440 : partial.intervalMinutes === undefined
+    ? undefined : parseIntervalMinutes(partial.intervalMinutes);
+  return {
+    ...updates,
+    ...(intervalMinutes === undefined ? {} : { intervalMinutes }),
+    updatedAt: new Date(),
+  };
+}
+
+// Save controls without changing the persisted enabled flag. In particular, a
+// config-only request must never turn a paused scheduler back on.
+export async function saveSchedulerConfiguration(partial: SchedulerSettingsPatch = {}): Promise<SchedulerStatus> {
+  await loadSettings();
+  await db.update(schedulerSettings).set(schedulerSettingsPatch(partial))
+    .where(eq(schedulerSettings.id, 1));
+  if (!isVercel()) await ensureSchedulerRunning();
+  return getStatus();
+}
+
+export async function stopScheduler(partial: SchedulerSettingsPatch = {}): Promise<SchedulerStatus> {
   await loadSettings();
   await db.update(schedulerSettings).set({
+    ...schedulerSettingsPatch(partial),
     enabled: false,
     stopRequested: true,
     nextRunAt: null,
-    updatedAt: new Date(),
   }).where(eq(schedulerSettings.id, 1));
   clearLocalTimer();
   return getStatus();
