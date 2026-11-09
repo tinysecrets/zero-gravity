@@ -23,9 +23,11 @@ export const metadata: Metadata = {
     title: "Zero Gravity | Free Domain DNS Check",
     description: "See what your domain's public SPF, DMARC and MX records show before you buy a review.",
     url: "/",
+    images: ["/opengraph-image"],
   },
   twitter: {
-    card: "summary",
+    card: "summary_large_image",
+    images: ["/opengraph-image"],
     title: "Zero Gravity | Free Domain DNS Check",
     description: "A transparent, read-only check of public SPF, DMARC and MX records.",
   },

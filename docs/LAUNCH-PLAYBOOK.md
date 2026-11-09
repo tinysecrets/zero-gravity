@@ -25,7 +25,7 @@
 - How-it-works page.
 - Plain-language SPF / DKIM / DMARC / MX educational guide.
 - Privacy notice describing current data flows.
-- Search metadata, sitemap, robots rules, and canonical Vercel URL.
+- Search metadata, sitemap, robots rules, canonical Vercel URL, and a branded social preview image.
 - Share action with referral UTM parameters; no fake rewards or tracking claims.
 - Operator-only paid-order report drafting in the private lead inbox; it generates evidence for human review and does not auto-send or mark an order delivered.
 
