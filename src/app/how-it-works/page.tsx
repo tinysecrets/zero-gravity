@@ -1,0 +1,14 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+
+const description = "See how Zero Gravity's free DNS snapshot and paid human-reviewed Domain Signals Review work before you order.";
+export const metadata: Metadata = {
+  title: "How the Domain Review Works",
+  description,
+  alternates: { canonical: "/how-it-works" },
+  openGraph: { type: "website", siteName: "Zero Gravity", title: "How It Works | Zero Gravity", description, url: "/how-it-works", images: ["/opengraph-image"] },
+  twitter: { card: "summary_large_image", title: "How It Works | Zero Gravity", description, images: ["/opengraph-image"] },
+};
+
+const steps=[["01","Enter a domain","Use a domain you own or have explicit permission to assess. The free check reads public DNS records only."],["02","Review the snapshot","See whether SPF, DMARC and MX records were observed, plus the specific findings returned by the public DNS lookup."],["03","Choose the paid review","If the snapshot raises questions, order the one-time $149 Domain Signals Review for one authorized domain."],["04","Human review and next steps","The service is intended to provide a human-reviewed written report that separates observations, questions and practical next steps. No DNS changes are made."]];
+export default function HowItWorksPage(){return <main className="min-h-screen bg-[#07090d] px-5 py-12 text-zinc-100 sm:px-8"><div className="mx-auto max-w-4xl"><Link href="/" className="text-sm text-teal-200 hover:text-white">← Zero Gravity home</Link><p className="mt-10 text-xs tracking-[0.2em] text-teal-200">A CLEAR PROCESS</p><h1 className="mt-3 text-4xl font-semibold tracking-tight">Know what happens before you order.</h1><div className="mt-10 space-y-4">{steps.map(([number,title,body])=><section key={number} className="flex gap-5 rounded-2xl border border-white/10 bg-white/[0.03] p-5"><span className="text-sm font-semibold text-teal-200">{number}</span><div><h2 className="text-lg font-semibold">{title}</h2><p className="mt-2 text-sm leading-6 text-zinc-400">{body}</p></div></section>)}</div><section className="mt-8 rounded-2xl border border-white/10 p-6"><h2 className="text-lg font-semibold">Important limits</h2><p className="mt-2 text-sm leading-6 text-zinc-400">A DNS snapshot cannot verify inbox placement, inspect every DKIM selector, confirm all authorized senders, prove a security incident or calculate financial loss. Changes and remediation are excluded unless separately scoped and approved in writing.</p><Link href="/trust" className="mt-4 inline-block text-sm text-teal-200 hover:text-white">Read our transparency commitments →</Link></section><Link href="/#free-check" className="mt-8 inline-flex rounded-xl bg-teal-200 px-5 py-3 text-sm font-semibold text-zinc-950">Start with the free check</Link></div></main>}

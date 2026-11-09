@@ -128,7 +128,7 @@ describe("request authentication", () => {
     clearEnv();
     vi.stubEnv("NODE_ENV", "production");
     expect(proxy(new NextRequest("https://example.test/"))?.status).toBe(200);
-    for (const path of ["/dashboard", "/api/autonomous/schedule", "/api/payments?reference=INV-123"]) {
+    for (const path of ["/dashboard", "/api/autonomous/schedule", "/api/payments?reference=INV-123", "/api/private/leads/1/report"]) {
       const response = proxy(new NextRequest(`https://example.test${path}`));
       expect(response?.status).toBe(503);
       expect(response?.headers.get("cache-control")).toBe("no-store");
@@ -137,7 +137,7 @@ describe("request authentication", () => {
     vi.stubEnv("OPERATOR_USERNAME", "operator");
     vi.stubEnv("OPERATOR_PASSWORD", "a-long-random-password-fixture-with-at-least-32-chars");
     const authorization = `Basic ${Buffer.from("operator:a-long-random-password-fixture-with-at-least-32-chars").toString("base64")}`;
-    for (const path of ["/dashboard", "/api/autonomous/schedule", "/api/payments?reference=INV-123"]) {
+    for (const path of ["/dashboard", "/api/autonomous/schedule", "/api/payments?reference=INV-123", "/api/private/leads/1/report"]) {
       expect(proxy(new NextRequest(`https://example.test${path}`, { headers: { authorization } }))?.status).toBe(200);
     }
     const rejected = proxy(new NextRequest("https://example.test/api/autonomous/schedule", {
@@ -162,10 +162,10 @@ describe("request authentication", () => {
   it("disables Preview operations by default to protect a shared Production database", () => {
     clearEnv();
     vi.stubEnv("NODE_ENV", "production"); vi.stubEnv("VERCEL_ENV", "preview");
-    for (const path of ["/", "/api/autonomous/schedule", "/api/autonomous/cron", "/api/payments/webhook"]) {
+    for (const path of ["/api/autonomous/schedule", "/api/autonomous/cron", "/api/payments/webhook"]) {
       expect(proxy(new NextRequest(`https://example.test${path}`))?.status).toBe(403);
     }
-    for (const path of ["/api/health", "/payment/success", "/api/payments?session_id=cs_test_random"]) {
+    for (const path of ["/", "/api/health", "/payment/success", "/api/payments?session_id=cs_test_random", "/trust", "/how-it-works", "/privacy", "/resources/email-authentication-basics", "/robots.txt", "/sitemap.xml", "/opengraph-image", "/api/public/dns-preview"]) {
       expect(proxy(new NextRequest(`https://example.test${path}`))?.status).toBe(200);
     }
     vi.stubEnv("ALLOW_PREVIEW_OPERATIONS", "true");
@@ -178,10 +178,13 @@ describe("request authentication", () => {
     clearEnv(); vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("OPERATOR_USERNAME", "operator");
     vi.stubEnv("OPERATOR_PASSWORD", "a-long-random-password-fixture-with-at-least-32-chars");
-    expect(proxy(new NextRequest("https://example.test/"))?.status).toBe(200);
+    for (const path of ["/", "/trust", "/how-it-works", "/privacy", "/resources/email-authentication-basics", "/robots.txt", "/sitemap.xml", "/opengraph-image"]) {
+      expect(proxy(new NextRequest("https://example.test" + path))?.status).toBe(200);
+    }
     expect(proxy(new NextRequest("https://example.test/dashboard"))?.status).toBe(401);
     expect(proxy(new NextRequest("https://example.test/dashboard/leads"))?.status).toBe(401);
     expect(proxy(new NextRequest("https://example.test/api/private/leads"))?.status).toBe(401);
+    expect(proxy(new NextRequest("https://example.test/api/private/leads/1/report"))?.status).toBe(401);
   });
   it("permits only runner-key-authenticated schedule status and cycle/schedule mutations", () => {
     clearEnv();

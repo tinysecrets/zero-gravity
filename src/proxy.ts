@@ -9,7 +9,7 @@ function isProviderRoute(request: NextRequest): boolean {
   // Public-facing handlers below enforce same-origin, request-size, and rate limits
   // themselves; they must not be blocked by operator Basic Auth. Preview remains
   // fail-closed above unless ALLOW_PREVIEW_OPERATIONS is explicitly enabled.
-  return path === "/api/public/contact" || path === "/api/public/checkout" ||
+  return path === "/api/public/contact" || path === "/api/public/checkout" || path === "/api/public/dns-preview" ||
     path === "/api/website-audits" || path === "/api/ai-advisor" ||
     path === "/api/health" || path === "/api/health/email" ||
     path === "/api/autonomous/cron" ||
@@ -43,9 +43,16 @@ function previewOperationsDisabled() {
   );
 }
 
+function isPublicPage(path: string): boolean {
+  return path === "/" || path === "/trust" || path === "/how-it-works" ||
+    path === "/privacy" || path === "/robots.txt" || path === "/sitemap.xml" || path === "/opengraph-image" ||
+    path === "/resources/email-authentication-basics";
+}
+
 function previewRouteIsReadOnly(request: NextRequest): boolean {
   const path = request.nextUrl.pathname;
-  return path === "/api/health" || path === "/payment/success" ||
+  return isPublicPage(path) || path === "/api/public/dns-preview" ||
+    path === "/api/health" || path === "/payment/success" ||
     (path === "/api/payments" && request.method === "GET" && request.nextUrl.searchParams.has("session_id"));
 }
 
@@ -76,8 +83,8 @@ export function proxy(request: NextRequest) {
     !previewRouteIsReadOnly(request)
   ) return previewOperationsDisabled();
 
-  // Public service page is separate from the authenticated operator workspace.
-  if (request.nextUrl.pathname === "/") return NextResponse.next();
+  // Public marketing, educational and crawler routes are separate from the authenticated operator workspace.
+  if (isPublicPage(request.nextUrl.pathname)) return NextResponse.next();
 
   if (isProviderRoute(request) || isRunnerAuthenticatedRoute(request)) {
     return NextResponse.next();
