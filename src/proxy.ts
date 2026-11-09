@@ -43,9 +43,16 @@ function previewOperationsDisabled() {
   );
 }
 
+function isPublicPage(path: string): boolean {
+  return path === "/" || path === "/trust" || path === "/how-it-works" ||
+    path === "/privacy" || path === "/robots.txt" || path === "/sitemap.xml" ||
+    path === "/resources/email-authentication-basics";
+}
+
 function previewRouteIsReadOnly(request: NextRequest): boolean {
   const path = request.nextUrl.pathname;
-  return path === "/api/health" || path === "/payment/success" ||
+  return isPublicPage(path) || path === "/api/public/dns-preview" ||
+    path === "/api/health" || path === "/payment/success" ||
     (path === "/api/payments" && request.method === "GET" && request.nextUrl.searchParams.has("session_id"));
 }
 
@@ -76,8 +83,8 @@ export function proxy(request: NextRequest) {
     !previewRouteIsReadOnly(request)
   ) return previewOperationsDisabled();
 
-  // Public service page is separate from the authenticated operator workspace.
-  if (request.nextUrl.pathname === "/") return NextResponse.next();
+  // Public marketing, educational and crawler routes are separate from the authenticated operator workspace.
+  if (isPublicPage(request.nextUrl.pathname)) return NextResponse.next();
 
   if (isProviderRoute(request) || isRunnerAuthenticatedRoute(request)) {
     return NextResponse.next();

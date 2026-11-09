@@ -27,6 +27,7 @@
 - Privacy notice describing current data flows.
 - Search metadata, sitemap, robots rules, and canonical Vercel URL.
 - Share action with referral UTM parameters; no fake rewards or tracking claims.
+- Operator-only paid-order report drafting in the private lead inbox; it generates evidence for human review and does not auto-send or mark an order delivered.
 
 ## Launch copy
 
@@ -136,4 +137,4 @@ Growth must be earned by usefulness and verifiable delivery. Do not make Zero Gr
 
 
 ### Custom domain status
-Vercel has the custom domain zero-gravity.wah-lah.com attached to this project, but public Cloudflare DNS currently returns NXDOMAIN for A, AAAA and CNAME. Do not switch canonical URLs or advertise the custom domain until the Cloudflare DNS record is added and public resolution succeeds. The temporary production URL remains https://zero-gravity-smoky.vercel.app.
+Vercel has the custom domain zero-gravity.wah-lah.com attached to this project, but public Cloudflare DNS currently returns NXDOMAIN for A, AAAA and CNAME. Vercel recommends a CNAME for host zero-gravity pointing to eeff82cf4a8be6da.vercel-dns-017.com. Add that record in the Cloudflare zone, then verify public DNS and HTTPS before switching canonical URLs or advertising the custom domain. The temporary production URL remains https://zero-gravity-smoky.vercel.app.
