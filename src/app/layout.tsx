@@ -16,13 +16,11 @@ export const metadata: Metadata = {
     "free DNS check", "SPF lookup", "DMARC check", "MX record lookup",
     "email authentication", "domain signals review", "Wah-Lah",
   ],
-  alternates: { canonical: "/" },
   openGraph: {
     type: "website",
     siteName: "Zero Gravity",
     title: "Zero Gravity | Free Domain DNS Check",
     description: "See what your domain's public SPF, DMARC and MX records show before you buy a review.",
-    url: "/",
     images: ["/opengraph-image"],
   },
   twitter: {

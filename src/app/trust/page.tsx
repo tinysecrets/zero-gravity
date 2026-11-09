@@ -1,4 +1,15 @@
+import type { Metadata } from "next";
 import Link from "next/link";
+
+const description = "Read exactly what Zero Gravity checks, what the domain review includes, and what public DNS evidence cannot prove.";
+export const metadata: Metadata = {
+  title: "Trust, Scope & Transparency",
+  description,
+  alternates: { canonical: "/trust" },
+  openGraph: { type: "website", siteName: "Zero Gravity", title: "Trust & Scope | Zero Gravity", description, url: "/trust", images: ["/opengraph-image"] },
+  twitter: { card: "summary_large_image", title: "Trust & Scope | Zero Gravity", description, images: ["/opengraph-image"] },
+};
+
 const items = [
 {title:"What we inspect",body:"A limited, read-only review of publicly observable SPF, DMARC and MX DNS records for one domain you own or are authorized to assess."},
 {title:"What we do not claim",body:"Public DNS records do not prove inbox placement, lost revenue, compromise, regulatory compliance or that a specific configuration change is safe."},

@@ -109,6 +109,7 @@ export function PublicSalesPage() {
               </div>
               <div className="mt-4 space-y-2">{preview.findings.map((finding,i)=><div key={i} className="rounded-xl border border-white/10 p-3"><p className="text-sm font-medium text-zinc-200">{finding.title}</p><p className="mt-1 text-xs leading-5 text-zinc-400">{finding.description}</p></div>)}</div>
               <p className="mt-4 text-xs leading-5 text-zinc-500">{preview.limitation}</p>
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-zinc-400">Know another business owner? Share the free check.</p><ShareZeroGravity /></div>
               <a href="#review" onClick={()=>setOrder((current)=>({...current,domain:preview.domain}))} className="mt-5 flex justify-center rounded-xl bg-white px-5 py-3 text-sm font-semibold text-zinc-950 hover:bg-teal-100">Get the human-reviewed report · $149</a>
             </div>}
           </div>

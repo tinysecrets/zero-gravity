@@ -1,4 +1,14 @@
+import type { Metadata } from "next";
 import Link from "next/link";
+
+const description = "Learn what information Zero Gravity collects for free DNS previews, orders and inquiries, and how service providers are used.";
+export const metadata: Metadata = {
+  title: "Privacy Notice",
+  description,
+  alternates: { canonical: "/privacy" },
+  openGraph: { type: "website", siteName: "Zero Gravity", title: "Privacy Notice | Zero Gravity", description, url: "/privacy", images: ["/opengraph-image"] },
+  twitter: { card: "summary_large_image", title: "Privacy Notice | Zero Gravity", description, images: ["/opengraph-image"] },
+};
 
 export default function PrivacyPage() {
   return <main className="min-h-screen bg-[#07090d] px-5 py-12 text-zinc-100 sm:px-8">
