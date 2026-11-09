@@ -41,7 +41,7 @@ export function LiveScanner({ onAddDealFromAudit }: LiveScannerProps) {
   const [dealAdded, setDealAdded] = useState(false);
 
   // Live Website Reliability Audit States
-  const [websiteUrl, setWebsiteUrl] = useState("https://zero-gravity-smoky.vercel.app");
+  const [websiteUrl, setWebsiteUrl] = useState("https://zero-gravity.wah-lah.com");
   const [isWebsiteAuditing, setIsWebsiteAuditing] = useState(false);
   const [websiteAuditResult, setWebsiteAuditResult] = useState<WebsiteReliabilityAudit | null>(null);
   const [websiteAuditError, setWebsiteAuditError] = useState<string | null>(null);
