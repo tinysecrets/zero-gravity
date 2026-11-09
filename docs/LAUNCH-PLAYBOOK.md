@@ -24,6 +24,7 @@
 - Trust and scope page.
 - How-it-works page.
 - Plain-language SPF / DKIM / DMARC / MX educational guide.
+- Public sample report using a reserved example domain and real launch-validation DNS observations, clearly labelled as illustrative rather than a customer result.
 - Privacy notice describing current data flows.
 - Search metadata, sitemap, robots rules, canonical Vercel URL, and a branded social preview image.
 - Share action with referral UTM parameters; no fake rewards or tracking claims.
