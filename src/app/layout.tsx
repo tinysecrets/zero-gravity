@@ -4,7 +4,7 @@ import "./globals.css";
 import { Analytics } from "@vercel/analytics/next";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://zero-gravity-smoky.vercel.app"),
+  metadataBase: new URL("https://zero-gravity.wah-lah.com"),
   title: {
     default: "Zero Gravity | Free Domain DNS Check & Email Authentication Review",
     template: "%s | Zero Gravity",

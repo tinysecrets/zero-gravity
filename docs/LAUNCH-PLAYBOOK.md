@@ -38,7 +38,7 @@ Most businesses rely on email every day, but few owners know what their domain p
 
 Zero Gravity now offers a free, read-only check of public SPF, DMARC and MX records. Enter a domain, see the observations, and read what the check cannot prove. No email gate. No DNS changes.
 
-Try it: https://zero-gravity-smoky.vercel.app
+Try it: https://zero-gravity.wah-lah.com
 
 ### Founder post
 
@@ -48,7 +48,7 @@ Start with a free public DNS snapshot. It checks for visible SPF, DMARC and MX r
 
 If you need more, the one-time Domain Signals Review is a human-reviewed report for one domain. No subscription and no changes to your DNS.
 
-Try the free check: https://zero-gravity-smoky.vercel.app
+Try the free check: https://zero-gravity.wah-lah.com
 
 ### Agency / MSP partner introduction
 
@@ -62,7 +62,7 @@ It does not make DNS changes, claim to prove inbox placement, or replace your te
 
 If this would be useful as an educational resource for your clients, feel free to share the link. I would also welcome feedback on what would make the output more useful for your workflow.
 
-https://zero-gravity-smoky.vercel.app
+https://zero-gravity.wah-lah.com
 
 ### Customer referral ask
 
@@ -138,4 +138,4 @@ Growth must be earned by usefulness and verifiable delivery. Do not make Zero Gr
 
 
 ### Custom domain status
-Vercel has the custom domain zero-gravity.wah-lah.com attached to this project, but public Cloudflare DNS currently returns NXDOMAIN for A, AAAA and CNAME. Vercel recommends a CNAME for host zero-gravity pointing to eeff82cf4a8be6da.vercel-dns-017.com. Add that record in the Cloudflare zone, then verify public DNS and HTTPS before switching canonical URLs or advertising the custom domain. The temporary production URL remains https://zero-gravity-smoky.vercel.app.
+Vercel has the custom domain zero-gravity.wah-lah.com attached to this project, but public Cloudflare DNS currently returns NXDOMAIN for A, AAAA and CNAME. Vercel recommends a CNAME for host zero-gravity pointing to eeff82cf4a8be6da.vercel-dns-017.com. Add that record in the Cloudflare zone, then verify public DNS and HTTPS before switching canonical URLs or advertising the custom domain. The temporary production URL remains https://zero-gravity.wah-lah.com.
