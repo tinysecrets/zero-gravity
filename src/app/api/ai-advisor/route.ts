@@ -149,7 +149,7 @@ async function generateStrategy(
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
-        "HTTP-Referer": process.env.APP_URL || "https://zero-gravity-smoky.vercel.app",
+        "HTTP-Referer": process.env.APP_URL || "https://zero-gravity.wah-lah.com",
         "X-Title": "Wah-Lah Industries Zero Gravity",
       },
       body: JSON.stringify({
