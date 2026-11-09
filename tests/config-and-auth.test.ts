@@ -165,7 +165,7 @@ describe("request authentication", () => {
     for (const path of ["/api/autonomous/schedule", "/api/autonomous/cron", "/api/payments/webhook"]) {
       expect(proxy(new NextRequest(`https://example.test${path}`))?.status).toBe(403);
     }
-    for (const path of ["/", "/api/health", "/payment/success", "/api/payments?session_id=cs_test_random", "/trust", "/how-it-works", "/privacy", "/resources/email-authentication-basics", "/robots.txt", "/sitemap.xml", "/api/public/dns-preview"]) {
+    for (const path of ["/", "/api/health", "/payment/success", "/api/payments?session_id=cs_test_random", "/trust", "/how-it-works", "/privacy", "/resources/email-authentication-basics", "/robots.txt", "/sitemap.xml", "/opengraph-image", "/api/public/dns-preview"]) {
       expect(proxy(new NextRequest(`https://example.test${path}`))?.status).toBe(200);
     }
     vi.stubEnv("ALLOW_PREVIEW_OPERATIONS", "true");
@@ -178,7 +178,7 @@ describe("request authentication", () => {
     clearEnv(); vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("OPERATOR_USERNAME", "operator");
     vi.stubEnv("OPERATOR_PASSWORD", "a-long-random-password-fixture-with-at-least-32-chars");
-    for (const path of ["/", "/trust", "/how-it-works", "/privacy", "/resources/email-authentication-basics", "/robots.txt", "/sitemap.xml"]) {
+    for (const path of ["/", "/trust", "/how-it-works", "/privacy", "/resources/email-authentication-basics", "/robots.txt", "/sitemap.xml", "/opengraph-image"]) {
       expect(proxy(new NextRequest("https://example.test" + path))?.status).toBe(200);
     }
     expect(proxy(new NextRequest("https://example.test/dashboard"))?.status).toBe(401);

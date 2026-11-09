@@ -45,7 +45,7 @@ function previewOperationsDisabled() {
 
 function isPublicPage(path: string): boolean {
   return path === "/" || path === "/trust" || path === "/how-it-works" ||
-    path === "/privacy" || path === "/robots.txt" || path === "/sitemap.xml" ||
+    path === "/privacy" || path === "/robots.txt" || path === "/sitemap.xml" || path === "/opengraph-image" ||
     path === "/resources/email-authentication-basics";
 }
 
