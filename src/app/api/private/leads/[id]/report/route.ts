@@ -36,7 +36,6 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
       "Customer: " + lead.name,
       "Domain: " + audit.domain,
       "Prepared: " + new Date().toISOString(),
-      "Payment reference: " + (lead.paymentReference || "recorded"),
       "",
       "PUBLIC DNS OBSERVATIONS",
       "SPF record observed: " + (audit.spfPresent ? "Yes" : "No"),

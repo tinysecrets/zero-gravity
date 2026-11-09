@@ -24,10 +24,11 @@
 - Trust and scope page.
 - How-it-works page.
 - Plain-language SPF / DKIM / DMARC / MX educational guide.
+- Public sample report using a reserved example domain and real launch-validation DNS observations, clearly labelled as illustrative rather than a customer result.
 - Privacy notice describing current data flows.
 - Search metadata, sitemap, robots rules, canonical Vercel URL, and a branded social preview image.
 - Share action with referral UTM parameters; no fake rewards or tracking claims.
-- Operator-only paid-order report drafting in the private lead inbox; it generates evidence for human review and does not auto-send or mark an order delivered.
+- Operator-only paid-order report drafting and explicit approved email delivery in the private lead inbox; report text is editable, the operator must confirm review, and Resend idempotency protects retries.
 
 ## Launch copy
 
@@ -114,12 +115,12 @@ Never count test-mode payments, checkout links, modeled revenue, or unverified l
 
 ## Release blockers before broad promotion
 
-1. Confirm and publish the real production domain. Current Vercel project domain inventory must be rechecked before replacing the temporary Vercel URL in metadata and marketing links.
-2. Define the exact report deliverable, owner, delivery deadline, refund/cancellation policy, and customer support process.
-3. Run one genuine low-risk live purchase and verify the Stripe webhook, lead inbox, receipt, report fulfillment, and bank payout reconciliation.
+1. Publish the custom production domain by adding the Vercel-recommended Cloudflare CNAME, then verify public DNS and HTTPS before replacing the temporary Vercel URL in metadata and marketing links.
+2. Set and publish the report delivery SLA, cancellation/refund policy, and customer support response expectations. Paid report drafting and explicit human-approved email delivery are implemented.
+3. Run one genuine low-risk live purchase and verify the Stripe webhook, lead inbox, receipt, report email acceptance, and bank payout reconciliation.
 4. Connect the intended social profiles to Metricool before scheduling posts.
 5. Confirm privacy, terms, and refund wording with the business owner and qualified counsel as appropriate.
-6. Verify the public free check on production and test invalid-domain, provider-failure, rate-limit, mobile and desktop states.
+6. The production free checker, public pages, sitemap, robots file and social preview image have been verified. Complete a mobile/desktop usability pass and keep monitoring DNS provider failures and rate limits.
 
 ## First-week campaign cadence
 
