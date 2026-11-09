@@ -1,7 +1,7 @@
 import type Stripe from "stripe";
 import { db } from "@/db";
 import { contactLeads, financialTransactions, opportunities, paymentRequests, revenueEvents } from "@/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import { amountToCents } from "./payment-checkout";
 
 export class PaymentEventError extends Error {
@@ -56,7 +56,10 @@ export async function recordStripePayment(session: Stripe.Checkout.Session): Pro
       throw new PaymentEventError("Stripe session, invoice reference, amount, currency, or payment mode does not match the saved invoice.");
     }
     if (invoice.status === "paid" || invoice.transactionId) {
-      await tx.update(contactLeads).set({ status: session.livemode ? "paid" : "test_paid", updatedAt: new Date() }).where(eq(contactLeads.paymentReference, invoice.referenceCode));
+      const leadWhere = session.livemode
+        ? and(eq(contactLeads.paymentReference, invoice.referenceCode), ne(contactLeads.status, "sent"))
+        : eq(contactLeads.paymentReference, invoice.referenceCode);
+      await tx.update(contactLeads).set({ status: session.livemode ? "paid" : "test_paid", updatedAt: new Date() }).where(leadWhere);
       return { received: true, idempotent: true, paymentRecorded: false, livemode: session.livemode };
     }
 

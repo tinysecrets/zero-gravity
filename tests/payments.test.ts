@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type StripeType from "stripe";
+import { eq } from "drizzle-orm";
 
 const checkoutMock = vi.hoisted(() => vi.fn());
 vi.mock("@/db", async () => { const fixture = await import("./database"); return { db: fixture.db }; });
@@ -145,6 +146,20 @@ describe("atomic payment recording", () => {
     expect((await db.select().from(opportunities))[0]).toMatchObject({ status: "revenue_collected", realizedRevenue: "350.00" });
     expect((await db.select().from(paymentRequests))[0].transactionId).toBeTruthy();
   });
+  it("preserves a sent report state when Stripe retries an already-paid event", async () => {
+    const invoice = await fixtureInvoice({ direct: true });
+    await db.insert(contactLeads).values({
+      kind: "checkout", status: "checkout_created", name: "Direct Buyer",
+      email: "direct@example.com", domain: "example.com",
+      paymentReference: invoice.referenceCode,
+    });
+    await recordStripePayment(sessionFor(invoice));
+    await db.update(contactLeads).set({ status: "sent" }).where(eq(contactLeads.paymentReference, invoice.referenceCode));
+    const retry = await recordStripePayment(sessionFor(invoice));
+    expect("idempotent" in retry && retry.idempotent).toBe(true);
+    expect((await db.select().from(contactLeads))[0].status).toBe("sent");
+  });
+
   it("adds different concurrent invoices without losing opportunity revenue", async () => {
     const first = await fixtureInvoice();
     const second = await fixtureInvoice({ amount: "250.00", dealId: first.opportunityId! });

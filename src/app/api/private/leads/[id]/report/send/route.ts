@@ -47,8 +47,13 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       return NextResponse.json({ success: false, error: lead.status === "sent" ? "The report email has already been accepted by the provider." : "A verified live paid order is required." }, { status: 409, headers: { "Cache-Control": "no-store" } });
     }
     const domain = validRequestedDomain(lead.domain || "");
-    if (!domain || !reportText.startsWith("ZERO GRAVITY — DOMAIN SIGNALS REVIEW") ||
-        !reportText.includes("Domain: " + domain) || !reportText.includes("LIMITATIONS")) {
+    const domainLines = reportText.split(/\r?\n/).filter((line) => line.startsWith("Domain: "));
+    const reportedDomain = domainLines.length === 1
+      ? validRequestedDomain(domainLines[0].slice("Domain: ".length).trim())
+      : "";
+    if (!domain || reportedDomain !== domain ||
+        !reportText.startsWith("ZERO GRAVITY — DOMAIN SIGNALS REVIEW") ||
+        !reportText.includes("LIMITATIONS")) {
       return NextResponse.json({ success: false, error: "The report must match this paid order's domain and retain its limitations section." }, { status: 422, headers: { "Cache-Control": "no-store" } });
     }
 

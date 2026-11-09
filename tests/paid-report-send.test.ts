@@ -119,7 +119,7 @@ describe("operator-approved paid report email delivery", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     const response = await sendPaidReport(request(lead.id, {
-      approved: true, reportText: reportText.replace("Domain: example.com", "Domain: other.example"),
+      approved: true, reportText: reportText.replace("Domain: example.com", "Domain: example.com.attacker.test"),
     }), { params: Promise.resolve({ id: String(lead.id) }) });
     expect(response.status).toBe(422);
     expect(fetchMock).not.toHaveBeenCalled();
