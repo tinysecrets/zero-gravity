@@ -4,9 +4,32 @@ import "./globals.css";
 import { Analytics } from "@vercel/analytics/next";
 
 export const metadata: Metadata = {
-  title: "Wah-Lah | Zero Gravity",
+  metadataBase: new URL("https://zero-gravity-smoky.vercel.app"),
+  title: {
+    default: "Zero Gravity | Free Domain DNS Check & Email Authentication Review",
+    template: "%s | Zero Gravity",
+  },
   description:
-    "A workspace for recording opportunities, reviewing public DNS signals, and requesting voluntary customer payments through Stripe Checkout. Figures are not forecasts or payout balances.",
+    "Check public SPF, DMARC and MX records for free. Zero Gravity provides transparent, human-reviewed domain signals reports with clear findings and practical next steps.",
+  applicationName: "Zero Gravity",
+  keywords: [
+    "free DNS check", "SPF lookup", "DMARC check", "MX record lookup",
+    "email authentication", "domain signals review", "Wah-Lah",
+  ],
+  alternates: { canonical: "/" },
+  openGraph: {
+    type: "website",
+    siteName: "Zero Gravity",
+    title: "Zero Gravity | Free Domain DNS Check",
+    description: "See what your domain's public SPF, DMARC and MX records show before you buy a review.",
+    url: "/",
+  },
+  twitter: {
+    card: "summary",
+    title: "Zero Gravity | Free Domain DNS Check",
+    description: "A transparent, read-only check of public SPF, DMARC and MX records.",
+  },
+  robots: { index: true, follow: true },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
