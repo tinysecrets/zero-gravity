@@ -89,7 +89,7 @@ export function PublicSalesPage() {
           <p className="text-xs tracking-[0.2em] text-teal-200">START WITH A FREE CHECK</p><h2 className="mt-3 text-2xl font-semibold">Free First Diagnostic</h2><p className="mt-2 text-sm text-zinc-400">A no-cost, read-only snapshot of public SPF, DMARC and MX signals.</p>
           <div className="mt-7 flex items-end gap-2"><span className="text-5xl font-semibold tracking-tight">FREE</span><span className="pb-1 text-sm text-zinc-500">first diagnostic</span></div><div className="my-6 h-px bg-white/10"/>
           <ul className="space-y-4 text-sm text-zinc-300">{["Read-only public SPF, DMARC and MX snapshot","No account, email or payment required","Implementation projects scoped at $1,500–$3,000","Optional monitoring at $199–$299/month"].map((s)=><li key={s} className="flex gap-3"><span className="text-teal-200">✓</span>{s}</li>)}</ul>
-          <a href="#review" className="mt-8 flex w-full justify-center rounded-xl bg-white px-5 py-3.5 text-sm font-semibold text-zinc-950 hover:bg-teal-100">Run your free diagnostic</a><p className="mt-3 text-center text-xs leading-5 text-zinc-500">No card required for the first check. Paid work starts only after written scope approval.</p>
+          <a href="#free-check" className="mt-8 flex w-full justify-center rounded-xl bg-white px-5 py-3.5 text-sm font-semibold text-zinc-950 hover:bg-teal-100">Run your free diagnostic</a><p className="mt-3 text-center text-xs leading-5 text-zinc-500">No card required for the first check. Paid work starts only after written scope approval.</p>
         </div></div>
       </section>
       <section id="free-check" className="mx-auto max-w-7xl px-5 py-14 md:px-8 md:py-18">
@@ -139,7 +139,7 @@ export function PublicSalesPage() {
           <label className={label+" mt-4"}>What would you like improved?<textarea className={input+" min-h-24 resize-y"} maxLength={2000} value={order.message} onChange={(e)=>update(setOrder,"message",e.target.value)} placeholder="Tell us what you want to improve or monitor."/></label>
           <label className="hidden" aria-hidden="true">Leave empty<input tabIndex={-1} autoComplete="off" value={order.website} onChange={(e)=>update(setOrder,"website",e.target.value)}/></label>
           {orderMessage&&<p role="alert" className={notice(orderError)+" mt-4"}>{orderMessage}</p>}
-          <button type="submit" disabled={busyOrder} className="mt-6 flex w-full justify-center rounded-xl bg-teal-200 px-5 py-3.5 text-sm font-semibold text-zinc-950 hover:bg-teal-100 disabled:opacity-60">{busyOrder?"Preparing checkout…":"Request proposal"}</button><p className="mt-3 text-xs leading-5 text-zinc-500">No payment is taken with this request. Any implementation or monitoring begins only after you approve its written scope and price.</p>
+          <button type="submit" disabled={busyOrder} className="mt-6 flex w-full justify-center rounded-xl bg-teal-200 px-5 py-3.5 text-sm font-semibold text-zinc-950 hover:bg-teal-100 disabled:opacity-60">{busyOrder?"Sending request…":"Request proposal"}</button><p className="mt-3 text-xs leading-5 text-zinc-500">No payment is taken with this request. Any implementation or monitoring begins only after you approve its written scope and price.</p>
         </form>
       </section>
       <section id="contact" className="border-t border-white/10 bg-white/[0.025]"><div className="mx-auto grid max-w-7xl gap-10 px-5 py-14 md:grid-cols-2 md:px-8 md:py-16">
